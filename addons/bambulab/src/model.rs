@@ -12,7 +12,15 @@ use serde_json::{Map, Value};
 pub const CANCELLED: u64 = 0x0300_400C;
 
 /// Keys under `print` that belong to the message, not to the printer's state.
-const ENVELOPE: [&str; 6] = ["command", "sequence_id", "msg", "result", "reason", "param"];
+const ENVELOPE: [&str; 7] = [
+    "command",
+    "sequence_id",
+    "msg",
+    "result",
+    "reason",
+    "param",
+    "err_code",
+];
 
 /// `gcode_state`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -162,6 +170,63 @@ impl Hms {
             _ => "unknown",
         }
     }
+}
+
+/// The health message a printer in cloud mode shows when it refuses a
+/// command it could not verify: "MQTT command verification failed".
+pub const VERIFICATION_FAILED: Hms = Hms {
+    attr: 0x0500_0500,
+    code: 0x0001_0007,
+};
+
+/// Whether this report carries [`VERIFICATION_FAILED`] among its health messages.
+pub fn verification_failed(message: &Value) -> bool {
+    message
+        .get("print")
+        .and_then(|p| p.get("hms"))
+        .and_then(Value::as_array)
+        .is_some_and(|list| {
+            list.iter().any(|h| {
+                number_in(h, "attr").map(|a| a as u64) == Some(VERIFICATION_FAILED.attr)
+                    && number_in(h, "code").map(|c| c as u64) == Some(VERIFICATION_FAILED.code)
+            })
+        })
+}
+
+/// The printer's answer to a command, from the report topic: the same
+/// section and `command`, with `result` and, on newer firmware,
+/// `err_code` and `reason`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reply {
+    pub accepted: bool,
+    pub err_code: Option<u64>,
+    pub reason: Option<String>,
+}
+
+/// The answer to `command` in `section` (`print`, `system`) this
+/// message carries, if it is one. Status pushes are not answers.
+pub fn reply_to(message: &Value, section: &str, command: &str) -> Option<Reply> {
+    let body = message.get(section)?;
+    if body.get("command").and_then(Value::as_str) != Some(command) {
+        return None;
+    }
+    let result = body.get("result").and_then(Value::as_str);
+    let err_code = body.get("err_code").and_then(number).map(|e| e as u64);
+    if result.is_none() && err_code.is_none() {
+        return None;
+    }
+    let reason = body
+        .get("reason")
+        .and_then(Value::as_str)
+        .filter(|r| !r.is_empty())
+        .map(str::to_string);
+    let refused = err_code.is_some_and(|e| e != 0)
+        || result.is_some_and(|r| !matches!(r.to_ascii_lowercase().as_str(), "success" | "ok"));
+    Some(Reply {
+        accepted: !refused,
+        err_code: err_code.filter(|e| *e != 0),
+        reason,
+    })
 }
 
 /// `print_error` as Bambu writes it: `0300_400C`.
@@ -471,6 +536,59 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn a_refused_command_is_read_from_its_answer() {
+        let refused = json!({"print": {"command": "pause", "sequence_id": "0", "result": "failed",
+            "reason": "mqtt message verify failed", "err_code": 84033543}});
+        assert_eq!(
+            reply_to(&refused, "print", "pause"),
+            Some(Reply {
+                accepted: false,
+                err_code: Some(84033543),
+                reason: Some("mqtt message verify failed".into()),
+            })
+        );
+        assert_eq!(reply_to(&refused, "print", "stop"), None);
+        assert_eq!(reply_to(&refused, "system", "pause"), None);
+    }
+
+    #[test]
+    fn an_error_code_alone_or_a_fail_result_alone_is_a_refusal() {
+        let code = json!({"print": {"command": "stop", "err_code": 84033543}});
+        assert!(!reply_to(&code, "print", "stop").unwrap().accepted);
+        let fail = json!({"system": {"command": "ledctrl", "result": "fail"}});
+        assert!(!reply_to(&fail, "system", "ledctrl").unwrap().accepted);
+    }
+
+    #[test]
+    fn success_and_status_pushes() {
+        let ok = json!({"print": {"command": "resume", "result": "success", "err_code": 0, "reason": ""}});
+        assert_eq!(
+            reply_to(&ok, "print", "resume"),
+            Some(Reply {
+                accepted: true,
+                err_code: None,
+                reason: None
+            })
+        );
+        let push = json!({"print": {"command": "push_status", "gcode_state": "RUNNING"}});
+        assert_eq!(reply_to(&push, "print", "push_status"), None);
+        assert_eq!(
+            reply_to(&json!({"print": {"command": "pause"}}), "print", "pause"),
+            None
+        );
+    }
+
+    #[test]
+    fn the_verification_message_is_the_one_bambu_documents() {
+        assert_eq!(VERIFICATION_FAILED.code_text(), "0500_0500_0001_0007");
+        let raised = json!({"print": {"hms": [{"attr": 0x0500_0500u32, "code": 0x0001_0007u32}]}});
+        assert!(verification_failed(&raised));
+        let other = json!({"print": {"hms": [{"attr": 0x0300_0100u32, "code": 0x0001_0007u32}]}});
+        assert!(!verification_failed(&other));
+        assert!(!verification_failed(&json!({"print": {"mc_percent": 3}})));
     }
 
     #[test]

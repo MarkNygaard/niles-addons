@@ -49,12 +49,16 @@ const WIDGET: &str = "printer_now";
 const TICK: &str = "tick";
 const RETRY: &str = "retry";
 const REDRAW: &str = "redraw";
+const CHECK: &str = "check_command";
 
 /// The last `gcode_state` seen, so a restart neither misses an ending
 /// nor reports one twice.
 const LAST_STATE: &str = "last_state";
 /// The essentials of the last report, for the page while the printer is away.
 const LAST_KNOWN: &str = "last_known";
+/// When the printer last refused to be paused, resumed or stopped: in
+/// cloud mode it takes those only from Bambu's own apps.
+const REFUSED: &str = "control_refused";
 
 /// Ask for a full report when the printer has been quiet this long.
 const QUIET_SECONDS: i64 = 300;
@@ -69,6 +73,15 @@ const STOP_ARMED_SECONDS: i64 = 15;
 const LIGHT_PENDING_SECONDS: i64 = 15;
 /// Two announcements at least this far apart.
 const ANNOUNCE_GAP_SECONDS: i64 = 60;
+/// A command with neither an answer nor an effect by then was not taken.
+/// Pausing waits for the current move, so not too short.
+const COMMAND_SECONDS: u32 = 30;
+/// How long the page says the light command was refused.
+const LIGHT_REFUSED_SECONDS: i64 = 120;
+
+/// What to tell somebody whose command the printer refused.
+pub const CLOUD_MODE: &str = "The printer didn't accept that: in cloud mode Bambu only lets its \
+    own apps control it. Use the Bambu app, or turn on Developer mode (LAN-only) on the printer.";
 
 struct BambuLab;
 
@@ -124,6 +137,24 @@ impl Settings {
     }
 }
 
+/// Who asked for a command, which decides how a refusal is told.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Origin {
+    /// Voice or a chat assistant, through a tool: said aloud.
+    Assistant,
+    /// The page, which redraws with the note.
+    Page,
+}
+
+/// A pause, resume or stop sent and not yet settled.
+struct Pending {
+    which: command::Job,
+    from: JobState,
+    origin: Origin,
+    /// The printer answered that it took it.
+    accepted: bool,
+}
+
 /// The connection to the printer, as the page shows it.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Link {
@@ -163,6 +194,11 @@ pub struct App {
     redraw_pending: bool,
     last_announce: i64,
     last_pushall: i64,
+    pending: Option<Pending>,
+    /// When the printer refused to be controlled, remembered until someone
+    /// asks to try again, so nobody is offered buttons that fail.
+    pub control_refused: Option<i64>,
+    pub light_refused_at: Option<i64>,
 }
 
 impl App {
@@ -186,6 +222,9 @@ impl App {
             redraw_pending: false,
             last_announce: 0,
             last_pushall: 0,
+            pending: None,
+            control_refused: None,
+            light_refused_at: None,
         }
     }
 
@@ -200,6 +239,11 @@ impl App {
             Some((on, at)) if now - at < LIGHT_PENDING_SECONDS => on,
             _ => self.light.unwrap_or(false),
         }
+    }
+
+    pub fn light_refused(&self, now: i64) -> bool {
+        self.light_refused_at
+            .is_some_and(|at| now - at < LIGHT_REFUSED_SECONDS)
     }
 
     pub fn stop_armed(&self, now: i64) -> bool {
@@ -239,6 +283,7 @@ impl Guest for BambuLab {
             report.merge(&saved);
             Some((report.snapshot(), saved.get("at")?.as_i64()?))
         });
+        app.control_refused = storage::get(REFUSED).and_then(|at| at.parse().ok());
         connect(&mut app).map_err(|why| format!("Niles cannot connect to the printer: {why}"))?;
         timers::every(TICK, 60).map_err(|e| format!("Could not set a timer: {}", host(&e)))?;
         APP.with(|slot| *slot.borrow_mut() = Some(app));
@@ -324,12 +369,10 @@ impl Guest for BambuLab {
                 let snapshot = app.snapshot().unwrap_or_default();
                 Ok(speech::status(&snapshot, now, &app.settings.zone).to_string())
             }
-            "pause_print" => {
-                job_command(app, command::Job::Pause).map(|job| format!("Pausing {job}."))
-            }
-            "resume_print" => {
-                job_command(app, command::Job::Resume).map(|job| format!("Resuming {job}."))
-            }
+            "pause_print" => job_command(app, command::Job::Pause, Origin::Assistant)
+                .map(|job| format!("Asked the printer to pause {job}.")),
+            "resume_print" => job_command(app, command::Job::Resume, Origin::Assistant)
+                .map(|job| format!("Asked the printer to resume {job}.")),
             "stop_print" => {
                 if args.get("confirm").and_then(Value::as_bool) != Some(true) {
                     let job = app
@@ -341,8 +384,8 @@ impl Guest for BambuLab {
                          needs confirm set to true."
                     ));
                 }
-                job_command(app, command::Job::Stop)
-                    .map(|job| format!("Stopping {job}. It cannot be resumed."))
+                job_command(app, command::Job::Stop, Origin::Assistant)
+                    .map(|job| format!("Asked the printer to stop {job}. It cannot be resumed."))
             }
             "set_printer_light" => {
                 let on = args
@@ -394,6 +437,7 @@ impl Guest for BambuLab {
                 app.redraw_last = now;
                 invalidate();
             }
+            CHECK => check_command(app, now),
             _ => {}
         });
     }
@@ -410,6 +454,7 @@ impl Guest for BambuLab {
                 return;
             }
             app.last_message = Some(now);
+            answers(app, &message, now);
             if let Some(on) = Report::light_in(&message) {
                 app.light_pending = None;
                 if app.light != Some(on) {
@@ -495,11 +540,11 @@ impl Guest for BambuLab {
         };
         with_app(|app| match (surface_id.as_str(), control_id.as_str()) {
             (PAGE, "pause") => {
-                job_command(app, command::Job::Pause)?;
+                job_command(app, command::Job::Pause, Origin::Page)?;
                 done(Some("Pausing the print"))
             }
             (PAGE, "resume") => {
-                job_command(app, command::Job::Resume)?;
+                job_command(app, command::Job::Resume, Origin::Page)?;
                 done(Some("Resuming the print"))
             }
             (PAGE, "stop") => {
@@ -511,7 +556,7 @@ impl Guest for BambuLab {
                     return Err("Press Stop again first.".into());
                 }
                 app.stop_armed_until = None;
-                job_command(app, command::Job::Stop)?;
+                job_command(app, command::Job::Stop, Origin::Page)?;
                 done(Some("Stopping the print"))
             }
             (PAGE, "stop_cancel") => {
@@ -539,6 +584,17 @@ impl Guest for BambuLab {
                 app.redraw_last = 0;
                 redraw(app, now);
                 done(Some("Trusting the new certificate"))
+            }
+            (PAGE, "control_retry") => {
+                app.control_refused = None;
+                storage::delete(REFUSED);
+                log::log(
+                    log::Level::Info,
+                    "Offering pause, resume and stop again, as asked on the page.",
+                );
+                app.redraw_last = 0;
+                redraw(app, now);
+                done(None)
             }
             (PAGE, "retry") => {
                 if app.conn.is_some() {
@@ -672,9 +728,10 @@ fn publish(app: &App, message: &Value, qos: Qos) -> Result<(), String> {
     })
 }
 
-/// Pause, resume or stop, if the print is in a state for it. Returns
-/// the job's name.
-fn job_command(app: &mut App, which: command::Job) -> Result<String, String> {
+/// Pause, resume or stop, if the print is in a state for it and the
+/// printer has not refused before. Returns the job's name. Whether the
+/// printer takes it is known only later: see [`answers`].
+fn job_command(app: &mut App, which: command::Job, origin: Origin) -> Result<String, String> {
     if app.link != Link::Connected {
         return Err(app.unreachable());
     }
@@ -697,12 +754,122 @@ fn job_command(app: &mut App, which: command::Job) -> Result<String, String> {
         }
         _ => {}
     }
+    if app.control_refused.is_some() {
+        return Err(CLOUD_MODE.into());
+    }
     publish(app, &command::job(which), Qos::AtLeastOnce)?;
     log::log(
         log::Level::Info,
         &format!("Asked the printer to {} {job}.", which.verb()),
     );
+    app.pending = Some(Pending {
+        which,
+        from: state,
+        origin,
+        accepted: false,
+    });
+    let _ = timers::after(CHECK, COMMAND_SECONDS);
     Ok(job)
+}
+
+/// The printer's answers to what was sent: a refusal on the report topic,
+/// or the health message it raises for a command it could not verify.
+fn answers(app: &mut App, message: &Value, now: i64) {
+    if let Some(pending) = &mut app.pending {
+        match model::reply_to(message, "print", pending.which.verb()) {
+            Some(reply) if reply.accepted => {
+                pending.accepted = true;
+                if app.control_refused.take().is_some() {
+                    storage::delete(REFUSED);
+                    log::log(
+                        log::Level::Info,
+                        "The printer takes commands from Niles again.",
+                    );
+                }
+            }
+            Some(reply) => {
+                let detail = format!(
+                    "it answered {}{}",
+                    reply.reason.as_deref().unwrap_or("that it failed"),
+                    reply
+                        .err_code
+                        .map(|c| format!(" (error {c})"))
+                        .unwrap_or_default()
+                );
+                refused(app, &detail, now);
+                return;
+            }
+            None => {}
+        }
+        if model::verification_failed(message) {
+            refused(
+                app,
+                "it reported HMS 0500_0500_0001_0007, command verification failed",
+                now,
+            );
+            return;
+        }
+    }
+    if app.light_pending.is_some()
+        && let Some(reply) = model::reply_to(message, "system", "ledctrl")
+        && !reply.accepted
+    {
+        warn(&format!(
+            "The printer refused the chamber light command: {}.",
+            reply.reason.as_deref().unwrap_or("no reason given")
+        ));
+        app.light_pending = None;
+        app.light_refused_at = Some(now);
+        app.redraw_last = 0;
+    }
+}
+
+/// The printer did not take a pause, resume or stop: remember it, so the
+/// page and the tools say so instead of offering it again, and tell
+/// whoever asked.
+fn refused(app: &mut App, detail: &str, now: i64) {
+    let Some(pending) = app.pending.take() else {
+        return;
+    };
+    timers::cancel(CHECK);
+    warn(&format!(
+        "The printer did not {} the print: {detail}. In cloud mode it takes control only from \
+         Bambu's own apps; Developer mode (LAN-only) lifts that.",
+        pending.which.verb()
+    ));
+    app.control_refused = Some(now);
+    if let Err(e) = storage::set(REFUSED, &now.to_string()) {
+        warn(&format!("Could not remember the refusal: {}", host(&e)));
+    }
+    if pending.origin == Origin::Assistant
+        && let Err(e) = notify::say(CLOUD_MODE, notify::Priority::Normal, None)
+    {
+        warn(&format!(
+            "Could not say that the printer refused: {}",
+            host(&e)
+        ));
+    }
+    app.redraw_last = 0;
+    redraw(app, now);
+}
+
+/// A command's time is up: if the printer neither answered nor did it,
+/// it did not take it.
+fn check_command(app: &mut App, now: i64) {
+    let Some(pending) = &app.pending else { return };
+    let state = app
+        .snapshot()
+        .and_then(|s| s.state)
+        .unwrap_or(JobState::Idle);
+    if !pending.accepted && state == pending.from {
+        refused(
+            app,
+            &format!("no answer and no change in {COMMAND_SECONDS} s"),
+            now,
+        );
+    } else {
+        app.pending = None;
+    }
 }
 
 fn switch_light(app: &mut App, on: bool, now: i64) -> Result<(), String> {
@@ -719,6 +886,11 @@ fn apply(app: &mut App, now: i64) {
     {
         let action = model::transition(app.last_state.as_ref(), state, snapshot.print_error);
         app.last_state = Some(state.clone());
+        // The command did what it asked; nothing to watch for.
+        if app.pending.as_ref().is_some_and(|p| p.from != *state) {
+            app.pending = None;
+            timers::cancel(CHECK);
+        }
         if let Err(e) = storage::set(LAST_STATE, state.code()) {
             warn(&format!(
                 "Could not store the printer's state: {}",
@@ -857,7 +1029,7 @@ fn redraw(app: &mut App, now: i64) {
     let s = app.snapshot().unwrap_or_default();
     let whole = |v: Option<f64>| v.map(|v| v.round() as i64);
     let key = format!(
-        "{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}",
+        "{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}",
         app.link,
         s.state,
         s.job,
@@ -865,6 +1037,7 @@ fn redraw(app: &mut App, now: i64) {
         s.remaining_min,
         s.layer,
         app.light,
+        (app.control_refused, app.light_refused(now)),
         s.print_error,
         s.hms,
         whole(s.nozzle),

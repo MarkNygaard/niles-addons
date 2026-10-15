@@ -2,7 +2,7 @@
 //! already holds.
 
 use crate::clock::clock_from;
-use crate::model::{CANCELLED, JobState, Snapshot, error_text};
+use crate::model::{CANCELLED, JobState, Snapshot, VERIFICATION_FAILED, error_text};
 use crate::niles::integration::ui::{
     self, Badge, Button, ButtonStyle, ListItem, Node, NodeKind, SwitchControl, TextBlock, Tone,
 };
@@ -124,8 +124,7 @@ fn link_problem(app: &App, now: i64) -> Option<(NodeKind, String)> {
             badge("Not connected", Tone::Bad),
             format!(
                 "Niles could not connect to the printer at {address}: {why}. Check the address \
-                 and the access code, and that LAN Only mode (and, on newer firmware, Developer mode) is on. \
-                 Trying again at {}.",
+                 and the access code. Trying again at {}.",
                 clock_from(&app.settings.zone, now, *retry_at)
             ),
         )),
@@ -250,10 +249,25 @@ pub fn page(app: &App, now: i64) -> UiTree {
             trailing: None,
         })
         .into_iter()
-        .chain(s.hms.iter().map(|h| ListItem {
-            title: format!("HMS {}", h.code_text()),
-            detail: Some("Look the code up in Bambu Lab's wiki or the Bambu Handy app.".into()),
-            trailing: Some(h.severity().into()),
+        .chain(s.hms.iter().map(|h| {
+            if *h == VERIFICATION_FAILED {
+                ListItem {
+                    title: "Command verification failed".into(),
+                    detail: Some(
+                        "The printer refused a command from outside Bambu's apps, as it does in cloud mode."
+                            .into(),
+                    ),
+                    trailing: Some(format!("HMS {}", h.code_text())),
+                }
+            } else {
+                ListItem {
+                    title: format!("HMS {}", h.code_text()),
+                    detail: Some(
+                        "Look the code up in Bambu Lab's wiki or the Bambu Handy app.".into(),
+                    ),
+                    trailing: Some(h.severity().into()),
+                }
+            }
         }))
         .collect();
     if !problems.is_empty() {
@@ -261,7 +275,23 @@ pub fn page(app: &App, now: i64) -> UiTree {
         tree.add(card, NodeKind::Items(problems));
     }
 
-    if state.is_active() {
+    if state.is_active() && app.control_refused.is_some() {
+        // Calm, in place of buttons that would only fail again.
+        tree.add(
+            0,
+            muted(
+                "Pause, resume and stop are not offered: the printer refused them. In cloud mode Bambu only lets its own apps control it. Use the Bambu app, or turn on Developer mode (LAN-only) on the printer and try again.",
+            ),
+        );
+        tree.add(
+            0,
+            button(
+                "control_retry",
+                "Try the controls again",
+                ButtonStyle::Secondary,
+            ),
+        );
+    } else if state.is_active() {
         let row = tree.add(0, NodeKind::Row);
         match state {
             JobState::Pause => tree.add(row, button("resume", "Resume", ButtonStyle::Primary)),
@@ -324,6 +354,14 @@ pub fn page(app: &App, now: i64) -> UiTree {
             value: app.light_shown(now),
         }),
     );
+    if app.light_refused(now) {
+        tree.add(
+            0,
+            muted(
+                "The printer didn't accept the light command. In cloud mode Bambu may only let its own apps control it.",
+            ),
+        );
+    }
 
     let mut footnote = Vec::new();
     let fans: Vec<String> = [
@@ -505,6 +543,24 @@ mod tests {
             ["pause", "stop_confirm", "stop_cancel", "light"]
         );
         assert_eq!(controls(&page(&app, NOW + 11)), ["pause", "stop", "light"]);
+    }
+
+    #[test]
+    fn a_printer_that_refused_control_gets_a_note_not_buttons() {
+        let mut app = app(Link::Connected, &[printing()]);
+        app.control_refused = Some(NOW - 60);
+        let tree = page(&app, NOW);
+        well_formed(&tree);
+        assert_eq!(controls(&tree), ["control_retry", "light"]);
+        assert!(words(&tree).contains("In cloud mode Bambu only lets its own apps control it"));
+    }
+
+    #[test]
+    fn a_refused_light_says_so_for_a_while() {
+        let mut app = app(Link::Connected, &[printing()]);
+        app.light_refused_at = Some(NOW - 10);
+        assert!(words(&page(&app, NOW)).contains("didn't accept the light command"));
+        assert!(!words(&page(&app, NOW + 600)).contains("didn't accept the light command"));
     }
 
     #[test]

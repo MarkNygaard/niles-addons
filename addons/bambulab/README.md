@@ -24,22 +24,45 @@ temperature.
 
 ## Setting up the printer
 
-1. **Turn on LAN Only mode.** On the printer's screen: Settings → Network
-   (WLAN) → LAN Only Mode. While it is on, the printer does not talk to Bambu's
-   cloud, so Bambu Handy and cloud printing stop working; Bambu Studio and
-   OrcaSlicer still find it on the network.
-2. **On firmware from 2025 on, turn on Developer mode too** (same screen,
-   once LAN Only mode is on). Since Bambu's authorization update (X1C firmware
-   01.08.05.00 and later), the printer refuses commands, and on some versions
-   connections, from third-party software unless Developer mode is on.
-   Without it you may see the status but not be able to pause, stop or switch
-   the light.
-3. **Note the access code.** It is the eight characters shown under
-   Settings → Network (WLAN) → LAN Only Mode → Access Code. It changes if you
-   refresh it there, and then Niles needs the new one.
-4. **Note the serial number.** Settings → Device on the printer's screen, or
+1. **Note the access code.** The eight characters under Settings → Network
+   (WLAN) on the printer's screen. It changes if you refresh it there, and
+   then Niles needs the new one.
+2. **Note the serial number.** Settings → Device on the printer's screen, or
    Bambu Studio → Device. An X1C's starts with `00M`.
-5. **Give the printer a fixed address** in your router, and note it.
+3. **Give the printer a fixed address** in your router, and note it.
+4. **Decide between cloud mode and LAN-only mode**, below. Nothing to change
+   if you keep cloud mode.
+
+## Cloud mode or LAN-only mode?
+
+Since Bambu's Authorization Control firmware (X1C 01.08.05.00, January 2025),
+a printer in its normal **cloud mode** lets anything on your network with the
+access code watch it, but takes control commands only from Bambu's own apps.
+
+| | Cloud mode (normal) | LAN Only + Developer mode |
+|---|---|---|
+| Bambu Handy, cloud printing | yes | no |
+| Status, progress, temperatures, the page and card | yes | yes |
+| Rules on readings and on `finished`, `failed`… | yes | yes |
+| "The print is done" announcements | yes | yes |
+| Chamber light from Niles | yes, as far as is known | yes |
+| Pause, resume and stop from Niles | **no**: the printer refuses them | yes |
+
+So most households can keep cloud mode and the Bambu app, and pause or stop
+prints from the app. The first time the printer refuses a pause, resume or
+stop, Niles says so plainly ("The printer didn't accept that: in cloud mode
+Bambu only lets its own apps control it…"), aloud if you asked by voice, and
+from then on the 3D printer page shows a short note instead of the Pause,
+Resume and Stop buttons, and the assistant answers the same sentence rather
+than trying again. The printer also shows "MQTT command verification failed"
+(HMS 0500_0500_0001_0007) on its screen for each refused command, which is
+why Niles does not keep trying.
+
+To control prints from Niles, turn on **LAN Only mode** and then **Developer
+mode** on the printer (Settings → Network (WLAN)). The printer then stops
+talking to Bambu's cloud, so Bambu Handy stops working; Bambu Studio and
+OrcaSlicer still find it on the network. Then press **Try the controls again**
+on the 3D printer page.
 
 ## Installing
 
@@ -51,7 +74,8 @@ the page), paste `https://github.com/MarkNygaard/niles-bambulab` and press
   on your home network, trusting the certificate it shows the first time
 - Add devices to your home. They appear in rooms, in rules and by voice.
 - Offer 5 tools to the assistant
-- Speak through your satellites (only if you pick a room for announcements)
+- Speak through your satellites (for announcements, if you pick a room, and
+  to say when the printer refuses a command you gave by voice)
 - Adds a page to the menu: 3D printer; adds a card to the front page: 3D printer
 
 Then fill in its settings:
@@ -88,7 +112,7 @@ the printer light" and rules that name it still switch it.
 
 - "How's the print going?" / "When will the printer be done?"
 - "How hot is the nozzle?"
-- "Pause the print." / "Resume the print."
+- "Pause the print." / "Resume the print." (LAN-only and Developer mode)
 - "Stop the print." The assistant asks first: stopping cannot be undone.
 - "Turn on the printer light."
 
@@ -170,6 +194,7 @@ pause, resume, stop and the chamber light.
 
 ```sh
 cargo run -p fake-printer -- --speed 0.5      # a print in about a minute
+cargo run -p fake-printer -- --cloud-mode     # refuses pause, resume and stop
 cargo run -p fake-printer -- --help           # failing, repeating, a new certificate…
 ```
 
@@ -221,6 +246,9 @@ same version: `git tag v0.1.0 && git push origin v0.1.0`. The workflow in
 with `niles-integration.toml`, `integration.wasm` and `logo.svg`.
 
 ## Thanks
+
+The logo is Bambu Lab's mark from [Simple Icons](https://simpleicons.org/)
+(CC0).
 
 The report fields and commands follow what the open-source
 [ha-bambulab](https://github.com/greghesp/ha-bambulab) integration for Home

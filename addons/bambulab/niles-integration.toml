@@ -1,6 +1,6 @@
 id = "bambulab"
 name = "Bambu Lab"
-version = "0.1.0"
+version = "0.1.1"
 description = "Follow your Bambu Lab 3D printer's prints by voice and in rules, pause or stop them, and hear when they finish."
 authors = ["Mark Nygaard Leth"]
 homepage = "https://github.com/MarkNygaard/niles-bambulab"
@@ -43,7 +43,7 @@ key = "access_code"
 label = "LAN access code"
 type = "secret"
 required = true
-help = "The eight characters under Settings → Network (WLAN) on the printer's screen. Turn on LAN Only mode there, and on firmware from 2025 on, Developer mode too, or the printer will not take commands from Niles."
+help = "The eight characters under Settings → Network (WLAN) on the printer's screen. In cloud mode Niles can follow prints but not pause or stop them; for that, turn on LAN Only and Developer mode there."
 
 [[settings]]
 key = "room"

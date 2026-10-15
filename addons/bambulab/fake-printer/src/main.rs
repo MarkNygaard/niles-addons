@@ -32,10 +32,25 @@ fake-printer: a stand-in Bambu Lab X1C on this machine
   --speed SECS         seconds per percent of the print [1]
   --fail-at PERCENT    fail the print at this percent
   --repeat             start another print 20 s after one ends
+  --cloud-mode         refuse pause, resume and stop as a printer in cloud
+                       mode does with Authorization Control: an answer with
+                       err_code 84033543 and HMS 0500_0500_0001_0007
+  --cloud-mode-silent  ignore pause, resume and stop without a word
   --full               send every field in every report, as an X1C does,
                        rather than only what changed, as a P1 does
   --cert-dir DIR       where the certificate is kept [.fake-printer]
   --new-cert           make a new certificate, as a firmware update can";
+
+/// How the printer treats control commands it cannot verify.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Cloud {
+    /// Developer mode, or old firmware: it takes them.
+    Off,
+    /// Says so, as reported for firmware with Authorization Control.
+    Refuse,
+    /// Drops them.
+    Ignore,
+}
 
 struct Args {
     bind: SocketAddr,
@@ -45,6 +60,7 @@ struct Args {
     start_after: u64,
     speed: f64,
     fail_at: Option<f64>,
+    cloud: Cloud,
     repeat: bool,
     full: bool,
     cert_dir: PathBuf,
@@ -62,6 +78,7 @@ fn args() -> Result<Args, String> {
         fail_at: None,
         repeat: false,
         full: false,
+        cloud: Cloud::Off,
         cert_dir: ".fake-printer".into(),
         new_cert: false,
     };
@@ -79,6 +96,8 @@ fn args() -> Result<Args, String> {
             "--fail-at" => args.fail_at = Some(number(value()?)?),
             "--repeat" => args.repeat = true,
             "--full" => args.full = true,
+            "--cloud-mode" => args.cloud = Cloud::Refuse,
+            "--cloud-mode-silent" => args.cloud = Cloud::Ignore,
             "--cert-dir" => args.cert_dir = value()?.into(),
             "--new-cert" => args.new_cert = true,
             "-h" | "--help" => return Err(USAGE.into()),
@@ -441,6 +460,24 @@ impl Printer {
             return;
         }
         if let Some(command) = command("print") {
+            match self.args.cloud {
+                Cloud::Off => {}
+                Cloud::Ignore => {
+                    println!("  (cloud mode: ignored)");
+                    return;
+                }
+                Cloud::Refuse => {
+                    println!("  (cloud mode: refused)");
+                    self.hms = vec![json!({"attr": 0x0500_0500u32, "code": 0x0001_0007u32})];
+                    self.publish(json!({"print": {
+                        "command": command, "sequence_id": "0", "param": "",
+                        "result": "failed", "reason": "mqtt message verify failed",
+                        "err_code": 84033543u32
+                    }}));
+                    self.report(false);
+                    return;
+                }
+            }
             let ok = match command.as_str() {
                 "pause" if matches!(self.state, State::Prepare | State::Running) => {
                     self.go(State::Pause);

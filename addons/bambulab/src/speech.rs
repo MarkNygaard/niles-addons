@@ -3,7 +3,7 @@
 //! are rounded.
 
 use crate::clock::clock_from;
-use crate::model::{Action, CANCELLED, JobState, Snapshot, error_text};
+use crate::model::{Action, CANCELLED, JobState, Snapshot, VERIFICATION_FAILED, error_text};
 use jiff::tz::TimeZone;
 use serde_json::{Map, Value, json};
 
@@ -92,7 +92,14 @@ pub fn problems(s: &Snapshot) -> Option<String> {
         codes.push(format!("error {}", error_text(e)));
     }
     for h in &s.hms {
-        codes.push(format!("HMS {} ({})", h.code_text(), h.severity()));
+        if *h == VERIFICATION_FAILED {
+            codes.push(format!(
+                "that it refused a command it could not verify (HMS {})",
+                h.code_text()
+            ));
+        } else {
+            codes.push(format!("HMS {} ({})", h.code_text(), h.severity()));
+        }
     }
     match codes.len() {
         0 => None,
@@ -335,6 +342,18 @@ mod tests {
         assert_eq!(
             problems(&s).as_deref(),
             Some("The printer reports HMS 0300_0100_0002_0001 (serious).")
+        );
+    }
+
+    #[test]
+    fn a_refused_command_is_not_called_fatal() {
+        let mut s = printing();
+        s.hms = vec![VERIFICATION_FAILED];
+        assert_eq!(
+            problems(&s).as_deref(),
+            Some(
+                "The printer reports that it refused a command it could not verify (HMS 0500_0500_0001_0007)."
+            )
         );
     }
 
