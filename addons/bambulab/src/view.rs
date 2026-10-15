@@ -123,8 +123,8 @@ fn link_problem(app: &App, now: i64) -> Option<(NodeKind, String)> {
         Link::Failed { why, retry_at } => Some((
             badge("Not connected", Tone::Bad),
             format!(
-                "Niles could not connect to the printer at {address}: {why}. Check the access \
-                 code, and that LAN Only mode (and, on newer firmware, Developer mode) is on. \
+                "Niles could not connect to the printer at {address}: {why}. Check the address \
+                 and the access code, and that LAN Only mode (and, on newer firmware, Developer mode) is on. \
                  Trying again at {}.",
                 clock_from(app.settings.zone, now, *retry_at)
             ),

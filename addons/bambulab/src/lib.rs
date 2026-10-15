@@ -469,6 +469,8 @@ impl Guest for BambuLab {
                     set_available(app, false);
                 }
             }
+            // The connection is news for the widget too: no waiting.
+            app.redraw_last = 0;
             redraw(app, now);
         });
     }
@@ -539,13 +541,18 @@ impl Guest for BambuLab {
                 );
                 mqtt::accept_certificate(conn).map_err(|e| host(&e))?;
                 app.link = Link::Connecting;
+                app.redraw_last = 0;
+                redraw(app, now);
                 done(Some("Trusting the new certificate"))
             }
             (PAGE, "retry") => {
-                if app.conn.is_none() {
-                    timers::cancel(RETRY);
-                    connect(app)?;
+                if app.conn.is_some() {
+                    return done(None);
                 }
+                timers::cancel(RETRY);
+                connect(app)?;
+                app.redraw_last = 0;
+                redraw(app, now);
                 done(Some("Connecting to the printer"))
             }
             _ => Err("That does nothing.".into()),
@@ -818,6 +825,7 @@ fn save_last_known(app: &mut App) {
         ("mc_remaining_time", s.remaining_min),
         ("layer_num", s.layer),
         ("total_layer_num", s.total_layers),
+        ("print_error", s.print_error.map(|e| e as f64)),
     ] {
         if let Some(v) = value {
             print.insert(key.into(), json!(v));

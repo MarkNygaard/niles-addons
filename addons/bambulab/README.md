@@ -1,0 +1,229 @@
+# Bambu Lab for Niles
+
+A [Niles](https://github.com/MarkNygaard/niles) integration for a Bambu Lab
+X1C 3D printer, over the printer's own MQTT broker on your home network. No
+Bambu cloud account is involved.
+
+With it you can:
+
+- **ask** how the print is going, when it will be done (as a clock time),
+  and how hot the nozzle, bed and chamber are;
+- **pause, resume and stop** a print, and switch the chamber light, by voice,
+  from the chat assistants or from the app;
+- **write rules** on the printer: "when the print finishes, turn on the
+  office lamp", "when the nozzle cools below 50 degrees, switch off the
+  printer's plug";
+- **hear** when a print finishes or fails, in a room you choose;
+- **see** the job, progress, time left, temperatures and any errors on a
+  "3D printer" page in the app's menu, and a small card on the front page or
+  a room.
+
+It is written for the X1C and should work with other Bambu Lab printers that
+offer LAN mode (X1, X1E, P1P, P1S); only the X1C reports a chamber
+temperature.
+
+## Setting up the printer
+
+1. **Turn on LAN Only mode.** On the printer's screen: Settings → Network
+   (WLAN) → LAN Only Mode. While it is on, the printer does not talk to Bambu's
+   cloud, so Bambu Handy and cloud printing stop working; Bambu Studio and
+   OrcaSlicer still find it on the network.
+2. **On firmware from 2025 on, turn on Developer mode too** (same screen,
+   once LAN Only mode is on). Since Bambu's authorization update (X1C firmware
+   01.08.05.00 and later), the printer refuses commands, and on some versions
+   connections, from third-party software unless Developer mode is on.
+   Without it you may see the status but not be able to pause, stop or switch
+   the light.
+3. **Note the access code.** It is the eight characters shown under
+   Settings → Network (WLAN) → LAN Only Mode → Access Code. It changes if you
+   refresh it there, and then Niles needs the new one.
+4. **Note the serial number.** Settings → Device on the printer's screen, or
+   Bambu Studio → Device. An X1C's starts with `00M`.
+5. **Give the printer a fixed address** in your router, and note it.
+
+## Installing
+
+In the Niles app: Integrations → Available → **Add from GitHub** (at the end of
+the page), paste `https://github.com/MarkNygaard/niles-bambulab` and press
+**Preview**. The approval screen says what it may do:
+
+- Connect to the MQTT broker at the address you enter under Printer address,
+  on your home network, trusting the certificate it shows the first time
+- Add devices to your home. They appear in rooms, in rules and by voice.
+- Offer 5 tools to the assistant
+- Speak through your satellites (only if you pick a room for announcements)
+- Adds a page to the menu: 3D printer; adds a card to the front page: 3D printer
+
+Then fill in its settings:
+
+| Setting | What to enter |
+|---|---|
+| Printer address | The printer's IP address, such as `192.168.1.40`. |
+| Serial number | From step 4. |
+| LAN access code | From step 3. Kept in Niles's encrypted secret store. |
+| Room | Where the printer stands. Its devices join this room. |
+| Say when a print is done in | A room for "the 3D printer has finished Benchy". Empty for silence. |
+| Time zone | For "done around 15:05". Niles does not tell plugins its time zone. |
+
+The card starts on the front page: a widget's room is fixed in the manifest,
+and this one cannot know yours. Move it to the printer's room from the
+plugin's panel on the Integrations page.
+
+## What you get
+
+### Devices
+
+In the room you chose, say `office`:
+
+| Device | Class | What it is |
+|---|---|---|
+| `office/printer` | sensor | Readings: `progress` (%), `remaining` (min), `layer`, `total_layers`, `nozzle_temp`, `nozzle_target`, `bed_temp`, `bed_target`, `chamber_temp` (°C). |
+| `office/printer_light` | light | The chamber light, on and off. |
+| `office/printer_job` | switch | Reports what the print does, as actions: `started`, `paused`, `resumed`, `finished`, `failed` and `cancelled` (stopped by somebody). |
+
+Niles takes actions ("button presses") only from `switch` devices, which is
+why the print job is a device of its own.
+
+The chamber light is a `light`, so it is one of the room's lights: "turn off
+the office lights", scenes and rules that switch the whole room include it.
+Turning it off during a print leaves the printer's camera and failure
+detection in the dark.
+
+### Things to say
+
+- "How's the print going?" / "When will the printer be done?"
+- "How hot is the nozzle?"
+- "Pause the print." / "Resume the print."
+- "Stop the print." The assistant asks first: stopping cannot be undone.
+- "Turn on the printer light."
+
+### Rules
+
+By voice ("when the printer job reports finished, turn on the office lamp"),
+in the Automations editor, or as Niles stores them:
+
+```json
+{
+  "description": "Lamp on when a print is done",
+  "triggers": [{ "type": "device_action", "device": "office/printer_job", "action": "finished" }],
+  "actions": [{ "do": "set_device", "device": "office/lamp", "on": true }]
+}
+```
+
+```json
+{
+  "description": "Printer plug off once it has cooled after a print",
+  "triggers": [{
+    "type": "numeric", "device": "office/printer", "measure": "nozzle_temp",
+    "below": 50, "for": { "minutes": 10 }
+  }],
+  "conditions": [],
+  "actions": [{ "do": "set_device", "device": "office/printer_plug", "on": false }]
+}
+```
+
+### The page
+
+**3D printer** in the menu shows the job, a status badge, progress, time left
+and when it will be done, the layer, the temperatures with their targets,
+Pause or Resume and Stop (Stop asks again before it stops), the chamber light,
+fan speeds, and any error codes the printer reports. When the printer is off
+or unreachable it says so, with the last thing it heard.
+
+### When the printer's certificate changes
+
+The printer's MQTT broker uses a certificate signed by Bambu Lab rather than a
+public authority, so Niles cannot check it the way a browser checks a website.
+Instead it remembers the certificate's key the first time it connects and from
+then on talks only to a printer showing the same key. A firmware update or a
+factory reset can give the printer a new key; so would another device
+answering at the printer's address. When that happens Niles sends the printer
+nothing, not even the access code, and the 3D printer page says so, with a
+**Trust the new certificate** button. Press it if you have just updated or
+reset the printer. The plugin never presses it for you.
+
+## What it does not do
+
+- The camera, the AMS, starting prints and uploading files: those are not
+  MQTT, or need more than a plugin can do today (Niles plugins have no raw TCP
+  or FTP).
+- Bambu's cloud: only LAN mode.
+
+## Developing
+
+You need Rust 1.85 or later, `rustup target add wasm32-wasip2`, and the
+`niles` binary (`cargo install --locked --git https://github.com/MarkNygaard/niles niles-bin`,
+or `cargo run -p niles-bin --` from a Niles checkout).
+
+```sh
+./build.sh                     # or .\build.ps1: builds integration.wasm
+cargo test                     # the plugin's own tests, natively
+niles plugin check .           # what an install would check
+```
+
+`build.sh` copies the component to `integration.wasm`, which `niles plugin
+dev .` and `niles plugin check .` prefer over anything under `target/`, so
+rebuild with it rather than with a bare `cargo build`.
+
+### Trying it without a printer
+
+`fake-printer/` is a stand-in X1C: an MQTT broker with TLS and a self-signed
+certificate, user `bblp` and an access code, that runs a print from PREPARE
+through RUNNING to FINISH with partial reports, answers `pushall`, and obeys
+pause, resume, stop and the chamber light.
+
+```sh
+cargo run -p fake-printer -- --speed 0.5      # a print in about a minute
+cargo run -p fake-printer -- --help           # failing, repeating, a new certificate…
+```
+
+`niles plugin dev` refuses loopback (`127.0.0.1`) for MQTT exactly as Niles
+does, so point the plugin at this machine's **LAN address**, which the fake
+printer listens on too. Copy `dev-settings.example.toml` to
+`dev-settings.toml`, put your machine's address in it, and:
+
+```sh
+niles plugin dev .
+> tool printer_status
+> render printer
+> render printer_now
+> tool pause_print
+> action printer stop
+> action printer stop_confirm
+> set office/printer_light {"on":false}
+> action printer light {"type":"toggled","value":true}
+```
+
+To see the certificate banner, stop the fake printer and start it again with
+`--new-cert`, then `render printer` and `action printer trust_certificate`.
+The trusted key is in `.niles-dev/storage.json`; delete that file to start
+afresh.
+
+### The interface
+
+`wit/niles-integration.wit` is a copy of
+[`schemas/niles-integration.wit`](https://github.com/MarkNygaard/niles/blob/main/schemas/niles-integration.wit)
+from Niles, at interface 0.2.0. To move to a newer interface, copy the new
+file over it, set `interface` (and `min_niles`, if it needs a newer Niles) in
+`niles-integration.toml`, rebuild, and fix what the compiler says. A patch
+version of the interface (0.2.x) only adds, so this plugin keeps working
+without it.
+
+### Releasing
+
+Bump `version` in `niles-integration.toml`, commit, and push a tag with the
+same version: `git tag v0.1.0 && git push origin v0.1.0`. The workflow in
+`.github/workflows/release.yml` builds the component and publishes a release
+with `niles-integration.toml`, `integration.wasm` and `logo.svg`.
+
+## Thanks
+
+The report fields and commands follow what the open-source
+[ha-bambulab](https://github.com/greghesp/ha-bambulab) integration for Home
+Assistant and the [OpenBambuAPI](https://github.com/Doridian/OpenBambuAPI)
+notes document. Bambu Lab is a trademark of its owner; this project is not
+affiliated with it.
+
+## License
+
+MIT
