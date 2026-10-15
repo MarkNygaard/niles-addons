@@ -2,8 +2,9 @@
 //! announcements. Written to be spoken, so units are words and numbers
 //! are rounded.
 
-use crate::clock::{Zone, clock_from};
+use crate::clock::clock_from;
 use crate::model::{Action, CANCELLED, JobState, Snapshot, error_text};
+use jiff::tz::TimeZone;
 use serde_json::{Map, Value, json};
 
 /// "1 hour 5 minutes", "45 minutes", "2 hours", "less than a minute".
@@ -101,7 +102,7 @@ pub fn problems(s: &Snapshot) -> Option<String> {
 }
 
 /// One or two sentences on where the printer stands.
-pub fn summary(s: &Snapshot, now: i64, zone: Zone) -> String {
+pub fn summary(s: &Snapshot, now: i64, zone: &TimeZone) -> String {
     let Some(state) = &s.state else {
         return "The printer is connected but has not said what it is doing yet.".into();
     };
@@ -157,7 +158,7 @@ pub fn summary(s: &Snapshot, now: i64, zone: Zone) -> String {
 
 /// What `printer_status` returns: the summary, and the facts behind it
 /// for the model to pick from.
-pub fn status(s: &Snapshot, now: i64, zone: Zone) -> Value {
+pub fn status(s: &Snapshot, now: i64, zone: &TimeZone) -> Value {
     let mut facts = Map::new();
     let mut put = |key: &str, value: Value| {
         facts.insert(key.into(), value);
@@ -249,8 +250,8 @@ mod tests {
         }
     }
 
-    fn cph() -> Zone {
-        Zone::from_setting("europe_central")
+    fn cph() -> TimeZone {
+        crate::clock::zone("Europe/Copenhagen")
     }
 
     #[test]
@@ -267,7 +268,7 @@ mod tests {
     #[test]
     fn a_running_print_says_how_far_and_when_it_is_done() {
         assert_eq!(
-            summary(&printing(), NOW, cph()),
+            summary(&printing(), NOW, &cph()),
             "Printing Benchy: 42 percent done, layer 87 of 210, about 1 hour 5 minutes left, \
              done around 15:05. Nozzle 220 degrees, bed 55, chamber 38."
         );
@@ -275,7 +276,7 @@ mod tests {
 
     #[test]
     fn status_carries_the_facts() {
-        let status = status(&printing(), NOW, cph());
+        let status = status(&printing(), NOW, &cph());
         assert_eq!(status["state"], "printing");
         assert_eq!(status["progress_percent"], 42);
         assert_eq!(status["remaining_minutes"], 65);
@@ -290,7 +291,7 @@ mod tests {
         let mut s = printing();
         s.state = Some(JobState::Finish);
         s.remaining_min = Some(0.0);
-        let status = status(&s, NOW, cph());
+        let status = status(&s, NOW, &cph());
         assert!(status.get("finishes_at").is_none());
         assert!(status.get("remaining_minutes").is_none());
         assert!(
@@ -306,11 +307,12 @@ mod tests {
         let mut s = printing();
         s.state = Some(JobState::Pause);
         assert!(
-            summary(&s, NOW, cph()).starts_with("Benchy is paused at 42 percent, layer 87 of 210.")
+            summary(&s, NOW, &cph())
+                .starts_with("Benchy is paused at 42 percent, layer 87 of 210.")
         );
         s.state = Some(JobState::Failed);
         s.print_error = Some(0x0300_8003);
-        let text = summary(&s, NOW, cph());
+        let text = summary(&s, NOW, &cph());
         assert!(text.starts_with("Benchy failed at 42 percent."), "{text}");
         assert!(
             text.ends_with("The printer reports error 0300_8003."),
@@ -318,7 +320,7 @@ mod tests {
         );
         s.print_error = Some(CANCELLED);
         assert!(
-            summary(&s, NOW, cph())
+            summary(&s, NOW, &cph())
                 .starts_with("The printer is idle. Benchy was stopped at 42 percent.")
         );
     }
@@ -341,14 +343,14 @@ mod tests {
         let mut s = printing();
         s.state = Some(JobState::Prepare);
         s.nozzle = Some(140.2);
-        assert!(summary(&s, NOW, cph()).starts_with(
+        assert!(summary(&s, NOW, &cph()).starts_with(
             "Getting ready to print Benchy: heating the nozzle to 220 degrees, now at 140."
         ));
     }
 
     #[test]
     fn a_printer_that_has_said_nothing_says_so() {
-        assert!(summary(&Snapshot::default(), NOW, cph()).contains("has not said"));
+        assert!(summary(&Snapshot::default(), NOW, &cph()).contains("has not said"));
     }
 
     #[test]

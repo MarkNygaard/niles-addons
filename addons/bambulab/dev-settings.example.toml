@@ -1,12 +1,10 @@
 # Copy to dev-settings.toml (which git ignores) for `niles plugin dev .`.
 #
-# Against the fake printer (`cargo run -p fake-printer`): the address is this
-# machine's LAN address, such as 192.168.1.23, because plugin dev refuses
-# loopback just as Niles does. Against a real printer: its address, serial
-# number and access code.
-address = "192.168.1.23"
+# Against the fake printer (`cargo run -p fake-printer`), run
+# `niles plugin dev . --allow-loopback`. Against a real printer: its
+# address, serial number and access code, and no flag.
+address = "127.0.0.1"
 serial = "00M09A350100001"
 access_code = "12345678"
 room = "office"
 announce_room = "office"
-# time_zone = "europe_central"

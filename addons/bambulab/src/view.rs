@@ -126,7 +126,7 @@ fn link_problem(app: &App, now: i64) -> Option<(NodeKind, String)> {
                 "Niles could not connect to the printer at {address}: {why}. Check the address \
                  and the access code, and that LAN Only mode (and, on newer firmware, Developer mode) is on. \
                  Trying again at {}.",
-                clock_from(app.settings.zone, now, *retry_at)
+                clock_from(&app.settings.zone, now, *retry_at)
             ),
         )),
         Link::CertificateChanged { .. } => Some((
@@ -192,7 +192,7 @@ pub fn page(app: &App, now: i64) -> UiTree {
                 muted(format!(
                     "Last heard {} ago: {}",
                     ago(now - at),
-                    speech::summary(known, *at, app.settings.zone)
+                    speech::summary(known, *at, &app.settings.zone)
                 )),
             );
         }
@@ -229,7 +229,7 @@ pub fn page(app: &App, now: i64) -> UiTree {
             if let Some(at) = speech::finishes_at(&s, now) {
                 tree.add(
                     row,
-                    reading("Done at", clock_from(app.settings.zone, now, at), None),
+                    reading("Done at", clock_from(&app.settings.zone, now, at), None),
                 );
             }
         }
@@ -381,7 +381,7 @@ pub fn widget(app: &App, now: i64) -> UiTree {
         match speech::finishes_at(&s, now) {
             Some(at) => tree.add(
                 row,
-                reading("Done at", clock_from(app.settings.zone, now, at), None),
+                reading("Done at", clock_from(&app.settings.zone, now, at), None),
             ),
             None => tree.add(row, reading("Remaining", "–".into(), None)),
         };
@@ -405,7 +405,6 @@ pub fn widget(app: &App, now: i64) -> UiTree {
 mod tests {
     use super::*;
     use crate::Settings;
-    use crate::clock::Zone;
     use serde_json::json;
 
     const NOW: i64 = 1_792_065_600;
@@ -416,7 +415,7 @@ mod tests {
             serial: "00M09A350100001".into(),
             room: "office".into(),
             announce_room: None,
-            zone: Zone::from_setting("europe_central"),
+            zone: crate::clock::zone("Europe/Copenhagen"),
         });
         app.link = link;
         for m in messages {

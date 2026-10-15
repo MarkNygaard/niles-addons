@@ -63,11 +63,10 @@ Then fill in its settings:
 | LAN access code | From step 3. Kept in Niles's encrypted secret store. |
 | Room | Where the printer stands. Its devices join this room. |
 | Say when a print is done in | A room for "the 3D printer has finished Benchy". Empty for silence. |
-| Time zone | For "done around 15:05". Niles does not tell plugins its time zone. |
 
-The card starts on the front page: a widget's room is fixed in the manifest,
-and this one cannot know yours. Move it to the printer's room from the
-plugin's panel on the Integrations page.
+The card starts in the printer's room; move it from the plugin's panel on the
+Integrations page. Clock times ("done around 15:05") are in Niles's own time
+zone. It needs Niles 0.2.1 or later.
 
 ## What you get
 
@@ -77,17 +76,13 @@ In the room you chose, say `office`:
 
 | Device | Class | What it is |
 |---|---|---|
-| `office/printer` | sensor | Readings: `progress` (%), `remaining` (min), `layer`, `total_layers`, `nozzle_temp`, `nozzle_target`, `bed_temp`, `bed_target`, `chamber_temp` (°C). |
+| `office/printer` | sensor | Readings: `progress` (%), `remaining` (min), `layer`, `total_layers`, `nozzle_temp`, `nozzle_target`, `bed_temp`, `bed_target`, `chamber_temp` (°C). Actions, when the print does something: `started`, `paused`, `resumed`, `finished`, `failed` and `cancelled` (stopped by somebody). |
 | `office/printer_light` | light | The chamber light, on and off. |
-| `office/printer_job` | switch | Reports what the print does, as actions: `started`, `paused`, `resumed`, `finished`, `failed` and `cancelled` (stopped by somebody). |
 
-Niles takes actions ("button presses") only from `switch` devices, which is
-why the print job is a device of its own.
-
-The chamber light is a `light`, so it is one of the room's lights: "turn off
-the office lights", scenes and rules that switch the whole room include it.
-Turning it off during a print leaves the printer's camera and failure
-detection in the dark.
+The chamber light is not one of the room's lights: "turn off the office
+lights", scenes, presence and the daily light curve leave it alone, because
+the printer's camera and failure detection need it during a print. "Turn off
+the printer light" and rules that name it still switch it.
 
 ### Things to say
 
@@ -99,13 +94,14 @@ detection in the dark.
 
 ### Rules
 
-By voice ("when the printer job reports finished, turn on the office lamp"),
-in the Automations editor, or as Niles stores them:
+By voice ("when the printer reports finished, turn on the office lamp"), in
+the Automations editor, or as Niles stores them. Niles reads the first back
+as *When the office printer reports finished, turn on the office lamp.*
 
 ```json
 {
   "description": "Lamp on when a print is done",
-  "triggers": [{ "type": "device_action", "device": "office/printer_job", "action": "finished" }],
+  "triggers": [{ "type": "device_action", "device": "office/printer", "action": "finished" }],
   "actions": [{ "do": "set_device", "device": "office/lamp", "on": true }]
 }
 ```
@@ -177,13 +173,20 @@ cargo run -p fake-printer -- --speed 0.5      # a print in about a minute
 cargo run -p fake-printer -- --help           # failing, repeating, a new certificate…
 ```
 
-`niles plugin dev` refuses loopback (`127.0.0.1`) for MQTT exactly as Niles
-does, so point the plugin at this machine's **LAN address**, which the fake
-printer listens on too. Copy `dev-settings.example.toml` to
-`dev-settings.toml`, put your machine's address in it, and:
+It listens on `127.0.0.1:8883`. An installed plugin can never reach
+loopback, so `niles plugin dev` needs `--allow-loopback` to let it. Copy
+`dev-settings.example.toml` to `dev-settings.toml`, and:
 
 ```sh
-niles plugin dev .
+niles plugin dev . --allow-loopback
+niles plugin dev . --allow-loopback --dry-run --call printer_status '{}' --render printer
+niles plugin dev . --allow-loopback --time-zone America/New_York
+```
+
+`--call` and `--render` wait for the printer's first MQTT status. At the
+prompt:
+
+```text
 > tool printer_status
 > render printer
 > render printer_now
@@ -203,11 +206,12 @@ afresh.
 
 `wit/niles-integration.wit` is a copy of
 [`schemas/niles-integration.wit`](https://github.com/MarkNygaard/niles/blob/main/schemas/niles-integration.wit)
-from Niles, at interface 0.2.0. To move to a newer interface, copy the new
+from Niles, at interface 0.2.1. To move to a newer interface, copy the new
 file over it, set `interface` (and `min_niles`, if it needs a newer Niles) in
 `niles-integration.toml`, rebuild, and fix what the compiler says. A patch
-version of the interface (0.2.x) only adds, so this plugin keeps working
-without it.
+version of the interface (0.2.x) only adds; this plugin uses 0.2.1's
+`config.time-zone` and `devices.set-room-light`, so it sets `min_niles =
+"0.2.1"`.
 
 ### Releasing
 

@@ -4,14 +4,14 @@
 //! a certificate nobody vouches for, user `bblp`, the LAN access code as
 //! password). Niles holds the connection; this plugin subscribes to the
 //! printer's reports, merges them into one picture, and turns it into
-//! three devices in the chosen room:
+//! two devices in the chosen room:
 //!
 //! - `<room>/printer`, a sensor whose readings are the job's progress,
-//!   time left, layers and temperatures;
-//! - `<room>/printer_light`, the chamber light, switchable;
-//! - `<room>/printer_job`, a switch that reports what the job does
-//!   (`started`, `paused`, `resumed`, `finished`, `failed`, `cancelled`)
-//!   as actions, for rules. Niles takes actions from switches only.
+//!   time left, layers and temperatures, and which reports what the job
+//!   does (`started`, `paused`, `resumed`, `finished`, `failed`,
+//!   `cancelled`) as actions, for rules;
+//! - `<room>/printer_light`, the chamber light, switchable, and kept out
+//!   of the room's lights so "lights off" never darkens a print.
 //!
 //! It offers tools for the printer's status, pausing, resuming and
 //! stopping a print and the light, a "3D printer" page and a widget, and
@@ -32,7 +32,6 @@ mod model;
 mod speech;
 mod view;
 
-use clock::Zone;
 use model::{Action, JobState, Report, Snapshot};
 use niles::integration::mqtt::{self, ConnectOptions, Qos};
 use niles::integration::types::{Device, DeviceClass, HostError, LightCapabilities, Reading};
@@ -81,7 +80,7 @@ pub struct Settings {
     pub serial: String,
     pub room: String,
     pub announce_room: Option<String>,
-    pub zone: Zone,
+    pub zone: jiff::tz::TimeZone,
 }
 
 impl Settings {
@@ -100,7 +99,7 @@ impl Settings {
             serial: serial.to_uppercase(),
             room,
             announce_room: text("announce_room"),
-            zone: Zone::from_setting(&text("time_zone").unwrap_or_default()),
+            zone: clock::zone(&config::time_zone()),
         })
     }
 
@@ -112,12 +111,8 @@ impl Settings {
         format!("{}/printer_light", self.room)
     }
 
-    pub fn job(&self) -> String {
-        format!("{}/printer_job", self.room)
-    }
-
-    fn devices(&self) -> [String; 3] {
-        [self.printer(), self.light(), self.job()]
+    fn devices(&self) -> [String; 2] {
+        [self.printer(), self.light()]
     }
 
     fn report_topic(&self) -> String {
@@ -327,7 +322,7 @@ impl Guest for BambuLab {
                     return Err(app.unreachable());
                 }
                 let snapshot = app.snapshot().unwrap_or_default();
-                Ok(speech::status(&snapshot, now, app.settings.zone).to_string())
+                Ok(speech::status(&snapshot, now, &app.settings.zone).to_string())
             }
             "pause_print" => {
                 job_command(app, command::Job::Pause).map(|job| format!("Pausing {job}."))
@@ -579,11 +574,19 @@ fn register_devices(settings: &Settings) -> Result<(), String> {
     for d in [
         device(settings.printer(), DeviceClass::Sensor, false),
         device(settings.light(), DeviceClass::Light, true),
-        device(settings.job(), DeviceClass::Switch, false),
     ] {
         devices::upsert(&d).map_err(|e| format!("Could not add {}: {}", d.id, host(&e)))?;
         // Unavailable until the printer answers.
         let _ = devices::set_available(&d.id, false);
+    }
+    // The camera and failure detection need the chamber light mid-print:
+    // "turn off the office lights", scenes, presence and the light curve
+    // leave it alone. By name it still switches.
+    if let Err(e) = devices::set_room_light(&settings.light(), false) {
+        warn(&format!(
+            "Could not keep the chamber light out of the room's lights: {}",
+            host(&e)
+        ));
     }
     // Devices left from another room setting.
     let ours = settings.devices();
@@ -739,7 +742,7 @@ fn did(app: &mut App, action: Action, snapshot: &Snapshot, now: i64) {
         log::Level::Info,
         &format!("The printer {}: {job}.", action.name()),
     );
-    if let Err(e) = devices::report_action(&app.settings.job(), action.name()) {
+    if let Err(e) = devices::report_action(&app.settings.printer(), action.name()) {
         warn(&format!("Could not report {}: {}", action.name(), host(&e)));
     }
     let (Some(room), Some(message)) = (

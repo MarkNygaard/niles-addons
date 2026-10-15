@@ -8,8 +8,8 @@
 //! changes, a full one when asked with `pushall`, and obeys pause,
 //! resume, stop and the chamber light.
 //!
-//! `niles plugin dev` refuses loopback, so point the plugin at this
-//! machine's LAN address, not 127.0.0.1. See the README.
+//! It listens on 127.0.0.1:8883, which `niles plugin dev --allow-loopback`
+//! lets the plugin reach. See the README.
 
 use rumqttd::local::{LinkError, LinkRx, LinkTx};
 use rumqttd::{
@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 const USAGE: &str = "\
 fake-printer: a stand-in Bambu Lab X1C on this machine
 
-  --bind ADDR          where to listen [0.0.0.0:8883]
+  --bind ADDR          where to listen [127.0.0.1:8883]
   --serial SERIAL      the printer's serial number [00M09A350100001]
   --code CODE          the LAN access code [12345678]
   --job NAME           the print's name [Benchy]
@@ -53,7 +53,7 @@ struct Args {
 
 fn args() -> Result<Args, String> {
     let mut args = Args {
-        bind: "0.0.0.0:8883".parse().unwrap(),
+        bind: "127.0.0.1:8883".parse().unwrap(),
         serial: "00M09A350100001".into(),
         code: "12345678".into(),
         job: "Benchy".into(),

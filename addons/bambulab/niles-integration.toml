@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Follow your Bambu Lab 3D printer's prints by voice and in rules, pause or stop them, and hear when they finish."
 authors = ["Mark Nygaard Leth"]
 homepage = "https://github.com/MarkNygaard/niles-bambulab"
-min_niles = "0.2.0"
+min_niles = "0.2.1"
 interface = "0.2"
 # No built-in group is about workshop machines, so it shows under Custom.
 logo = "logo.svg"
@@ -50,34 +50,13 @@ key = "room"
 label = "Room"
 type = "room"
 required = true
-help = "Where the printer stands. Its devices join this room: the printer, its chamber light and its print job."
+help = "Where the printer stands. Its devices join this room: the printer and its chamber light."
 
 [[settings]]
 key = "announce_room"
 label = "Say when a print is done in"
 type = "room"
 help = "Niles says when a print finishes or fails in this room. Leave it empty for no announcements."
-
-[[settings]]
-key = "time_zone"
-label = "Time zone"
-type = "choice"
-default = "europe_central"
-help = "For the clock time a print will be done. Plugins are not told the house's time zone."
-options = [
-    { value = "utc", label = "UTC" },
-    { value = "europe_west", label = "London, Dublin, Lisbon" },
-    { value = "europe_central", label = "Copenhagen, Berlin, Paris, Oslo, Stockholm" },
-    { value = "europe_east", label = "Helsinki, Athens, Kyiv" },
-    { value = "us_eastern", label = "US Eastern" },
-    { value = "us_central", label = "US Central" },
-    { value = "us_mountain", label = "US Mountain" },
-    { value = "us_arizona", label = "Arizona" },
-    { value = "us_pacific", label = "US Pacific" },
-    { value = "india", label = "India" },
-    { value = "china", label = "China" },
-    { value = "japan", label = "Japan" },
-]
 
 [[ui.menu]]
 id = "printer"
@@ -89,7 +68,5 @@ refresh_every = 60
 [[ui.widgets]]
 id = "printer_now"
 title = "3D printer"
-# A widget's room is fixed in the manifest; the household moves it to
-# the printer's room from the plugin's panel. Without one it starts on
-# the front page.
+room = "setting:room"
 refresh_every = 60

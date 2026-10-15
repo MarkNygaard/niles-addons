@@ -12,6 +12,7 @@ crate-type = ["cdylib"]
 [dependencies]
 wit-bindgen = "0.63"
 serde_json = "1"
+jiff = { version = "0.2.38", default-features = false, features = ["std", "tzdb-bundle-always"] }
 
 [profile.release]
 opt-level = "s"
