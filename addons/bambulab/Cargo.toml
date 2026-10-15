@@ -1,0 +1,28 @@
+[package]
+name = "niles-bambulab"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "A Bambu Lab X1C 3D printer integration for Niles."
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.63"
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+codegen-units = 1
+
+# The plugin is the default member, so `cargo build --target wasm32-wasip2`
+# builds only it. The fake printer is a native program for testing:
+# `cargo run -p fake-printer`.
+[workspace]
+members = [".", "fake-printer"]
+default-members = ["."]
+resolver = "3"
