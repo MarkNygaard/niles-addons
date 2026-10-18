@@ -1,0 +1,16 @@
+# The add-on library's reviewed list.
+#
+# Listed: a repo here passed `niles plugin check --listing` and someone read
+# what it asks for. Every public repo with the GitHub topic `niles-addon` is
+# in the library too, as Unreviewed, without being named here.
+#
+#   [[addon]]
+#   repo = "you/your-repo"
+#
+# Taken off the list: the add-on is hidden from Browse, and a copy already
+# installed says on its panel that it is no longer listed, and why. One
+# sentence, shown to the household as it is.
+#
+#   [[removed]]
+#   repo = "someone/their-repo"
+#   reason = "Its author archived it."

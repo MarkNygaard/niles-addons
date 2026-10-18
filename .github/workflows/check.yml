@@ -1,0 +1,43 @@
+name: check a listing
+
+# A pull request that changes addons.toml: the file must read, and every
+# repo it adds to [[addon]] goes through `niles plugin check --listing`,
+# everything an install checks plus the niles-installed marker. What the
+# add-on would be allowed to do is put in the run's summary, for the
+# review. `pull_request`, not `pull_request_target`: the check downloads a
+# stranger's release, so it runs with a read-only token and no secrets.
+on:
+  pull_request:
+    paths: [addons.toml]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: addons.toml reads, and what it adds
+        run: python scripts/registry.py added --base "origin/${{ github.base_ref }}" > added.txt
+      - name: niles plugin check --listing
+        run: |
+          set -o pipefail
+          status=0
+          if [ ! -s added.txt ]; then
+            echo "Nothing added to [[addon]]." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          while read -r repo; do
+            echo "### $repo" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            if ! docker run --rm ghcr.io/marknygaard/niles:latest plugin check --listing "$repo" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"; then
+              status=1
+            fi
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          done < added.txt
+          exit $status
