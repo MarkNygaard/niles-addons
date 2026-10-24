@@ -1,0 +1,22 @@
+# Niles's first-party add-ons, one crate per directory. Each is built to
+# wasm32-wasip2 and released on its own, like any third-party add-on. An
+# add-on depends only on the WIT copied into wit/, never on Niles's own
+# crates.
+[workspace]
+resolver = "3"
+members = ["*"]
+exclude = ["target", "wit"]
+
+# The bindings wit-bindgen generates take as many arguments as the WIT's
+# functions and records have fields. Clippy's own threshold for a
+# function's length is Niles's too: 100 lines.
+[workspace.lints.clippy]
+too_many_arguments = "allow"
+too_many_lines = "warn"
+
+# Profiles are read only here, at the workspace root.
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+codegen-units = 1
