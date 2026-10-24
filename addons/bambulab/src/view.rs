@@ -146,7 +146,65 @@ fn ago(seconds: i64) -> String {
 
 pub fn page(app: &App, now: i64) -> UiTree {
     let mut tree = Tree::new();
+    link_notice(&mut tree, app, now);
 
+    if app.link != Link::Connected {
+        if let Some((known, at)) = &app.last_known
+            && known.state.is_some()
+        {
+            tree.add(
+                0,
+                muted(format!(
+                    "Last heard {} ago: {}",
+                    ago(now - at),
+                    speech::summary(known, *at, &app.settings.zone)
+                )),
+            );
+        }
+        return tree.done();
+    }
+
+    let Some(s) = app.snapshot() else {
+        tree.add(0, text("Waiting for the printer's first report."));
+        return tree.done();
+    };
+    let state = s.state.clone().unwrap_or(JobState::Idle);
+
+    let top = tree.add(0, NodeKind::Row);
+    tree.add(
+        top,
+        NodeKind::Heading(s.job.clone().unwrap_or_else(|| "No print job".into())),
+    );
+    tree.add(top, state_badge(&s));
+
+    progress(&mut tree, app, &s, &state, now);
+    problems(&mut tree, &s);
+    controls(&mut tree, app, &s, &state, now);
+    temperatures(&mut tree, &s);
+
+    tree.add(
+        0,
+        NodeKind::Switch(SwitchControl {
+            id: "light".into(),
+            label: "Chamber light".into(),
+            value: app.light_shown(now),
+        }),
+    );
+    if app.light_refused(now) {
+        tree.add(
+            0,
+            muted(
+                "The printer didn't accept the light command. In cloud mode Bambu may only let its own apps control it.",
+            ),
+        );
+    }
+
+    footnote(&mut tree, app, &s, now);
+    tree.done()
+}
+
+/// The certificate card, or what is wrong with the connection, if anything.
+fn link_notice(tree: &mut Tree, app: &App, now: i64) {
     if let Link::CertificateChanged { trusted, presented } = &app.link {
         let card = tree.add(
             0,
@@ -181,65 +239,42 @@ pub fn page(app: &App, now: i64) -> UiTree {
             tree.add(0, button("retry", "Try again now", ButtonStyle::Secondary));
         }
     }
+}
 
-    if app.link != Link::Connected {
-        if let Some((known, at)) = &app.last_known
-            && known.state.is_some()
-        {
-            tree.add(
-                0,
-                muted(format!(
-                    "Last heard {} ago: {}",
-                    ago(now - at),
-                    speech::summary(known, *at, &app.settings.zone)
-                )),
-            );
-        }
-        return tree.done();
+fn progress(tree: &mut Tree, app: &App, s: &Snapshot, state: &JobState, now: i64) {
+    if !(state.is_active() || *state == JobState::Failed) {
+        return;
     }
-
-    let Some(s) = app.snapshot() else {
-        tree.add(0, text("Waiting for the printer's first report."));
-        return tree.done();
-    };
-    let state = s.state.clone().unwrap_or(JobState::Idle);
-
-    let top = tree.add(0, NodeKind::Row);
+    let row = tree.add(0, NodeKind::Row);
     tree.add(
-        top,
-        NodeKind::Heading(s.job.clone().unwrap_or_else(|| "No print job".into())),
+        row,
+        reading(
+            "Progress",
+            format!("{}", s.percent.unwrap_or(0.0).round() as i64),
+            Some("%"),
+        ),
     );
-    tree.add(top, state_badge(&s));
-
-    if state.is_active() || state == JobState::Failed {
-        let row = tree.add(0, NodeKind::Row);
-        tree.add(
-            row,
-            reading(
-                "Progress",
-                format!("{}", s.percent.unwrap_or(0.0).round() as i64),
-                Some("%"),
-            ),
-        );
-        if state.is_active() {
-            if let Some(m) = s.remaining_min {
-                tree.add(row, reading("Remaining", short_duration(m), None));
-            }
-            if let Some(at) = speech::finishes_at(&s, now) {
-                tree.add(
-                    row,
-                    reading("Done at", clock_from(&app.settings.zone, now, at), None),
-                );
-            }
+    if state.is_active() {
+        if let Some(m) = s.remaining_min {
+            tree.add(row, reading("Remaining", short_duration(m), None));
         }
-        if let (Some(l), Some(t)) = (s.layer, s.total_layers) {
+        if let Some(at) = speech::finishes_at(s, now) {
             tree.add(
                 row,
-                reading("Layer", format!("{} / {}", l as u64, t as u64), None),
+                reading("Done at", clock_from(&app.settings.zone, now, at), None),
             );
         }
     }
+    if let (Some(l), Some(t)) = (s.layer, s.total_layers) {
+        tree.add(
+            row,
+            reading("Layer", format!("{} / {}", l as u64, t as u64), None),
+        );
+    }
+}
 
+/// The print error and the HMS codes the printer reports, if any.
+fn problems(tree: &mut Tree, s: &Snapshot) {
     let problems: Vec<ListItem> = s
         .print_error
         .filter(|e| *e != 0 && *e != CANCELLED)
@@ -274,8 +309,14 @@ pub fn page(app: &App, now: i64) -> UiTree {
         let card = tree.add(0, NodeKind::Card(Some("The printer reports".into())));
         tree.add(card, NodeKind::Items(problems));
     }
+}
 
-    if state.is_active() && app.control_refused.is_some() {
+/// Pause or resume and stop, while a print is under way.
+fn controls(tree: &mut Tree, app: &App, s: &Snapshot, state: &JobState, now: i64) {
+    if !state.is_active() {
+        return;
+    }
+    if app.control_refused.is_some() {
         // Calm, in place of buttons that would only fail again.
         tree.add(
             0,
@@ -291,39 +332,41 @@ pub fn page(app: &App, now: i64) -> UiTree {
                 ButtonStyle::Secondary,
             ),
         );
-    } else if state.is_active() {
-        let row = tree.add(0, NodeKind::Row);
-        match state {
-            JobState::Pause => tree.add(row, button("resume", "Resume", ButtonStyle::Primary)),
-            _ => tree.add(row, button("pause", "Pause", ButtonStyle::Secondary)),
-        };
-        if !app.stop_armed(now) {
-            tree.add(row, button("stop", "Stop", ButtonStyle::Destructive));
-        } else {
-            let card = tree.add(0, NodeKind::Card(Some("Stop the print?".into())));
-            tree.add(
-                card,
-                text(format!(
-                    "Stopping ends {} for good. It cannot be resumed.",
-                    s.job.as_deref().unwrap_or("the print")
-                )),
-            );
-            let row = tree.add(card, NodeKind::Row);
-            tree.add(
-                row,
-                button(
-                    "stop_confirm",
-                    "Yes, stop the print",
-                    ButtonStyle::Destructive,
-                ),
-            );
-            tree.add(
-                row,
-                button("stop_cancel", "Keep printing", ButtonStyle::Secondary),
-            );
-        }
+        return;
     }
+    let row = tree.add(0, NodeKind::Row);
+    match state {
+        JobState::Pause => tree.add(row, button("resume", "Resume", ButtonStyle::Primary)),
+        _ => tree.add(row, button("pause", "Pause", ButtonStyle::Secondary)),
+    };
+    if !app.stop_armed(now) {
+        tree.add(row, button("stop", "Stop", ButtonStyle::Destructive));
+    } else {
+        let card = tree.add(0, NodeKind::Card(Some("Stop the print?".into())));
+        tree.add(
+            card,
+            text(format!(
+                "Stopping ends {} for good. It cannot be resumed.",
+                s.job.as_deref().unwrap_or("the print")
+            )),
+        );
+        let row = tree.add(card, NodeKind::Row);
+        tree.add(
+            row,
+            button(
+                "stop_confirm",
+                "Yes, stop the print",
+                ButtonStyle::Destructive,
+            ),
+        );
+        tree.add(
+            row,
+            button("stop_cancel", "Keep printing", ButtonStyle::Secondary),
+        );
+    }
+}
 
+fn temperatures(tree: &mut Tree, s: &Snapshot) {
     let card = tree.add(0, NodeKind::Card(Some("Temperatures".into())));
     let row = tree.add(card, NodeKind::Row);
     tree.add(
@@ -345,24 +388,10 @@ pub fn page(app: &App, now: i64) -> UiTree {
     if s.chamber.is_some() {
         tree.add(row, reading("Chamber", degrees(s.chamber), Some("°C")));
     }
+}
 
-    tree.add(
-        0,
-        NodeKind::Switch(SwitchControl {
-            id: "light".into(),
-            label: "Chamber light".into(),
-            value: app.light_shown(now),
-        }),
-    );
-    if app.light_refused(now) {
-        tree.add(
-            0,
-            muted(
-                "The printer didn't accept the light command. In cloud mode Bambu may only let its own apps control it.",
-            ),
-        );
-    }
-
+/// The fans and how long ago the last report came, in small print.
+fn footnote(tree: &mut Tree, app: &App, s: &Snapshot, now: i64) {
     let mut footnote = Vec::new();
     let fans: Vec<String> = [
         ("part", s.part_fan),
@@ -381,7 +410,6 @@ pub fn page(app: &App, now: i64) -> UiTree {
     if !footnote.is_empty() {
         tree.add(0, muted(footnote.join(" ")));
     }
-    tree.done()
 }
 
 /// The compact card for a room or the front page.

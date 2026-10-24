@@ -2,7 +2,7 @@
 name = "fake-printer"
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 description = "A stand-in Bambu Lab X1C on the LAN, for trying the plugin with niles plugin dev."
 publish = false
 

@@ -1,9 +1,9 @@
 id = "bambulab"
 name = "Bambu Lab"
-version = "0.1.1"
+version = "0.1.1" # x-release-please-version
 description = "Follow your Bambu Lab 3D printer's prints by voice and in rules, pause or stop them, and hear when they finish."
 authors = ["Mark Nygaard Leth"]
-homepage = "https://github.com/MarkNygaard/niles-bambulab"
+homepage = "https://github.com/MarkNygaard/niles-addons/tree/main/addons/bambulab"
 min_niles = "0.2.1"
 interface = "0.2"
 # No built-in group is about workshop machines, so it shows under Custom.

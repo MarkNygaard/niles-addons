@@ -1,8 +1,8 @@
 # Bambu Lab for Niles
 
-A [Niles](https://github.com/MarkNygaard/niles) integration for a Bambu Lab
-X1C 3D printer, over the printer's own MQTT broker on your home network. No
-Bambu cloud account is involved.
+A [Niles](https://github.com/MarkNygaard/niles) add-on for a Bambu Lab X1C 3D
+printer, over the printer's own MQTT broker on your home network. No Bambu
+cloud account is involved.
 
 With it you can:
 
@@ -15,12 +15,15 @@ With it you can:
   printer's plug";
 - **hear** when a print finishes or fails, in a room you choose;
 - **see** the job, progress, time left, temperatures and any errors on a
-  "3D printer" page in the app's menu, and a small card on the front page or
-  a room.
+  "3D printer" page in the app's menu, and a small card in the printer's room.
 
 It is written for the X1C and should work with other Bambu Lab printers that
 offer LAN mode (X1, X1E, P1P, P1S); only the X1C reports a chamber
 temperature.
+
+It used to live in its own repository,
+[MarkNygaard/niles-bambulab](https://github.com/MarkNygaard/niles-bambulab),
+which released 0.1.0 and 0.1.1. Its history came along.
 
 ## Setting up the printer
 
@@ -64,33 +67,39 @@ talking to Bambu's cloud, so Bambu Handy stops working; Bambu Studio and
 OrcaSlicer still find it on the network. Then press **Try the controls again**
 on the 3D printer page.
 
-## Installing
+## Install
 
-In the Niles app: Integrations → Available → **Add from GitHub** (at the end of
-the page), paste `https://github.com/MarkNygaard/niles-bambulab` and press
-**Preview**. The approval screen says what it may do:
+In Niles, on the Add-ons page's **Available** tab, press **Add** next to
+**Add-on from GitHub**, paste `MarkNygaard/niles-addons/bambulab` and press
+**Preview**. That address needs Niles 0.6.0 or later: Niles 0.5 and older
+don't know addresses with an add-on's name after the repo. The add-on itself
+runs on Niles 0.2.1 and later.
+
+The approval screen says what it may do:
 
 - Connect to the MQTT broker at the address you enter under Printer address,
   on your home network, trusting the certificate it shows the first time
 - Add devices to your home. They appear in rooms, in rules and by voice.
-- Offer 5 tools to the assistant
+- Offer tools to the assistant (five of them, listed under **What its tools
+  do**)
 - Speak through your satellites (for announcements, if you pick a room, and
   to say when the printer refuses a command you gave by voice)
-- Adds a page to the menu: 3D printer; adds a card to the front page: 3D printer
+- Adds a page to the menu: 3D printer
+- Adds a card to the room its "Room" setting names: 3D printer
 
 Then fill in its settings:
 
 | Setting | What to enter |
 |---|---|
 | Printer address | The printer's IP address, such as `192.168.1.40`. |
-| Serial number | From step 4. |
-| LAN access code | From step 3. Kept in Niles's encrypted secret store. |
+| Serial number | From step 2. |
+| LAN access code | From step 1. Kept in Niles's encrypted secret store. |
 | Room | Where the printer stands. Its devices join this room. |
 | Say when a print is done in | A room for "the 3D printer has finished Benchy". Empty for silence. |
 
-The card starts in the printer's room; move it from the plugin's panel on the
-Integrations page. Clock times ("done around 15:05") are in Niles's own time
-zone. It needs Niles 0.2.1 or later.
+The card starts in the printer's room; move it or hide it from the add-on's
+panel on the Add-ons page. Clock times ("done around 15:05") are in Niles's
+own time zone.
 
 ## What you get
 
@@ -160,29 +169,28 @@ factory reset can give the printer a new key; so would another device
 answering at the printer's address. When that happens Niles sends the printer
 nothing, not even the access code, and the 3D printer page says so, with a
 **Trust the new certificate** button. Press it if you have just updated or
-reset the printer. The plugin never presses it for you.
+reset the printer. The add-on never presses it for you.
 
 ## What it does not do
 
 - The camera, the AMS, starting prints and uploading files: those are not
-  MQTT, or need more than a plugin can do today (Niles plugins have no raw TCP
-  or FTP).
+  MQTT, or need more than an add-on can do today (add-ons have no raw TCP or
+  FTP).
 - Bambu's cloud: only LAN mode.
 
-## Developing
+## Build and check
 
-You need Rust 1.85 or later, `rustup target add wasm32-wasip2`, and the
-`niles` binary (`cargo install --locked --git https://github.com/MarkNygaard/niles niles-bin`,
-or `cargo run -p niles-bin --` from a Niles checkout).
+From `addons/`, with the `wasm32-wasip2` target installed and a `niles`
+binary (`cargo run -p niles-bin --` from a Niles checkout will do):
 
 ```sh
-./build.sh                     # or .\build.ps1: builds integration.wasm
-cargo test                     # the plugin's own tests, natively
-niles plugin check .           # what an install would check
+./build.sh bambulab            # or .\build.ps1 bambulab: writes bambulab/integration.wasm
+cargo test -p bambulab         # its own tests, natively
+niles plugin check bambulab    # what an install would check
 ```
 
-`build.sh` copies the component to `integration.wasm`, which `niles plugin
-dev .` and `niles plugin check .` prefer over anything under `target/`, so
+`build.sh` copies the component to `bambulab/integration.wasm`, which `niles
+plugin dev` and `niles plugin check` prefer over anything under `target/`, so
 rebuild with it rather than with a bare `cargo build`.
 
 ### Trying it without a printer
@@ -190,17 +198,22 @@ rebuild with it rather than with a bare `cargo build`.
 `fake-printer/` is a stand-in X1C: an MQTT broker with TLS and a self-signed
 certificate, user `bblp` and an access code, that runs a print from PREPARE
 through RUNNING to FINISH with partial reports, answers `pushall`, and obeys
-pause, resume, stop and the chamber light.
+pause, resume, stop and the chamber light. It is a native program, not an
+add-on, so it is outside the `addons/` workspace, with its own lock file and
+`target/`. From `addons/bambulab/`:
 
 ```sh
-cargo run -p fake-printer -- --speed 0.5      # a print in about a minute
-cargo run -p fake-printer -- --cloud-mode     # refuses pause, resume and stop
-cargo run -p fake-printer -- --help           # failing, repeating, a new certificate…
+cargo run --manifest-path fake-printer/Cargo.toml -- --speed 0.5    # a print in about a minute
+cargo run --manifest-path fake-printer/Cargo.toml -- --cloud-mode   # refuses pause, resume and stop
+cargo run --manifest-path fake-printer/Cargo.toml -- --help         # failing, repeating, a new certificate…
 ```
 
-It listens on `127.0.0.1:8883`. An installed plugin can never reach
-loopback, so `niles plugin dev` needs `--allow-loopback` to let it. Copy
-`dev-settings.example.toml` to `dev-settings.toml`, and:
+It listens on `127.0.0.1:8883` and keeps its certificate in `.fake-printer/`
+where it was started. An installed add-on can never reach loopback, so
+`niles plugin dev` needs `--allow-loopback` to let it. Copy
+`dev-settings.example.toml` to `dev-settings.toml` (git ignores it, as it may
+hold a real printer's access code), and from `addons/bambulab/` in another
+terminal:
 
 ```sh
 niles plugin dev . --allow-loopback
@@ -229,21 +242,16 @@ afresh.
 
 ### The interface
 
-`wit/niles-integration.wit` is a copy of
-[`schemas/niles-integration.wit`](https://github.com/MarkNygaard/niles/blob/main/schemas/niles-integration.wit)
-from Niles, at interface 0.2.1. To move to a newer interface, copy the new
-file over it, set `interface` (and `min_niles`, if it needs a newer Niles) in
-`niles-integration.toml`, rebuild, and fix what the compiler says. A patch
-version of the interface (0.2.x) only adds; this plugin uses 0.2.1's
-`config.time-zone` and `devices.set-room-light`, so it sets `min_niles =
-"0.2.1"`.
+It builds against the frozen interface 0.2 (`addons/wit/niles-integration-0.2.wit`),
+at 0.2.1, which Niles still runs. It uses 0.2.1's `config.time-zone` and
+`devices.set-room-light`, so it sets `min_niles = "0.2.1"`.
 
 ### Releasing
 
-Bump `version` in `niles-integration.toml`, commit, and push a tag with the
-same version: `git tag v0.1.0 && git push origin v0.1.0`. The workflow in
-`.github/workflows/release.yml` builds the component and publishes a release
-with `niles-integration.toml`, `integration.wasm` and `logo.svg`.
+Like every add-on here, through release-please: pull request titles name it
+as the scope (`feat(bambulab): …`, `fix(bambulab): …`), and merging its
+release pull request tags `bambulab-vX.Y.Z` and attaches what an install
+fetches. Its versions continue from 0.1.1.
 
 ## Thanks
 
@@ -255,7 +263,3 @@ The report fields and commands follow what the open-source
 Assistant and the [OpenBambuAPI](https://github.com/Doridian/OpenBambuAPI)
 notes document. Bambu Lab is a trademark of its owner; this project is not
 affiliated with it.
-
-## License
-
-MIT

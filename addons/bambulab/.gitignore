@@ -1,9 +1,0 @@
-/target
-/fake-printer/target
-# The built component, from build.sh / build.ps1. Releases build their own.
-/integration.wasm
-# niles plugin dev: storage, and setting values that may hold the access code.
-/.niles-dev
-/dev-settings.toml
-# The fake printer's certificate and key.
-/.fake-printer

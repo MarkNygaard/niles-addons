@@ -17,13 +17,9 @@
 //! stopping a print and the light, a "3D printer" page and a widget, and
 //! says when a print finishes or fails, if asked to.
 
-// The bindings wit-bindgen generates for the interface's wider records
-// and functions take more arguments than clippy likes.
-#![allow(clippy::too_many_arguments)]
-
 wit_bindgen::generate!({
     world: "plugin",
-    path: "wit",
+    path: "../wit/niles-integration-0.2.wit",
 });
 
 mod clock;
