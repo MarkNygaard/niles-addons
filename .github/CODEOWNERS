@@ -1,2 +1,17 @@
-# Mark reviews every listing.
-* @MarkNygaard
+# Who must approve a pull request into main. The ruleset requires a code
+# owner's review and no other approvals, so a pull request that touches
+# only files without an owner can be merged by its author once CI passes.
+#
+# Mark owns everything: the registry (addons.toml, scripts/), the
+# workflows, this file, and his add-ons.
+*                               @MarkNygaard
+
+# Shared files every add-on's release or dependencies change. Unowned, so
+# a release pull request or a new dependency doesn't wait on Mark; CI
+# still checks every build.
+/.release-please-manifest.json
+/addons/Cargo.lock
+
+# Add-ons someone else owns, with no owner here, so their author merges
+# their own pull requests. Adding a folder here is Mark's decision.
+# /addons/<name>/
