@@ -79,4 +79,4 @@ Each add-on is released on its own. Pull request titles name it as the scope, `f
 
 A new add-on also needs a package in [`release-please-config.json`](release-please-config.json), copied from `addons/spotprice`'s with the name changed, and `# x-release-please-version` after the `version` line in its `Cargo.toml` and `niles-integration.toml`.
 
-The add-ons here aren't in `addons.toml` yet: listing an add-on that shares its repo with others needs version 2 of the index.
+The add-ons here are **Listed** automatically: the index builder lists every add-on released from this repo, without an entry in `addons.toml`, since they're reviewed in this repo's own pull requests. A `[[removed]]` entry with `addon = "<name>"` still takes one off. Listing one makes the index version 2, which Niles reads from 0.6.0.

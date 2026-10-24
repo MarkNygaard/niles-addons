@@ -352,15 +352,24 @@ def wanted_entries(
     removed: dict[Key, str],
     topic: list[str],
     releases_for,
+    own: str | None = None,
 ) -> list[tuple[str, str | None, str]]:
     """What goes in the index besides the removals, as (repo, addon,
-    standing): every listed entry, and every topic repo's add-ons that
-    aren't listed or removed. A topic repo whose releases are tagged for
-    add-ons is those add-ons; otherwise it is one. `releases_for(repo)`
-    gives a topic repo's releases."""
+    standing): every listed entry; every add-on released from `own`, this
+    registry's repo, as listed; and every topic repo's add-ons that aren't
+    listed or removed. A topic repo whose releases are tagged for add-ons
+    is those add-ons; otherwise it is one. `releases_for(repo)` gives a
+    repo's releases."""
     out: list[tuple[str, str | None, str]] = [(r, a, "listed") for r, a in listed]
     named = {key_of(r, a) for r, a in [*listed, *removed]}
     whole = {r.lower() for r, a in [*listed, *removed] if a is None}
+    # The first-party add-ons beside this registry are reviewed in its own
+    # pull requests, so each one released is listed without an entry.
+    if own is not None and own.lower() not in whole:
+        for addon in addons_in(releases_for(own)):
+            if key_of(own, addon) not in named:
+                named.add(key_of(own, addon))
+                out.append((own, addon, "listed"))
     for repo in topic:
         if repo.lower() in whole:
             continue
@@ -372,7 +381,12 @@ def wanted_entries(
     return sorted(out, key=lambda e: (e[0].lower(), e[1] or ""))
 
 
-def index_of(github: GitHub, listed: list[Key], removed: dict[Key, str]) -> dict:
+def index_of(
+    github: GitHub,
+    listed: list[Key],
+    removed: dict[Key, str],
+    own: str | None = None,
+) -> dict:
     repos: dict[str, Repo | None] = {}
 
     def repo_of(name: str) -> Repo | None:
@@ -390,7 +404,7 @@ def index_of(github: GitHub, listed: list[Key], removed: dict[Key, str]) -> dict
 
     addons = []
     for name, addon, standing in wanted_entries(
-        listed, removed, github.topic_repos(), releases_for
+        listed, removed, github.topic_repos(), releases_for, own
     ):
         print(f"{standing:10} {address(name, addon)}", file=sys.stderr)
         repo = repo_of(name)
@@ -417,10 +431,10 @@ def index_of(github: GitHub, listed: list[Key], removed: dict[Key, str]) -> dict
     }
 
 
-def build(out_dir: Path) -> None:
+def build(out_dir: Path, own: str | None) -> None:
     listed, removed = read_list(Path("addons.toml").read_text(encoding="utf-8"))
     github = GitHub(os.environ.get("GITHUB_TOKEN"))
-    index = index_of(github, listed, removed)
+    index = index_of(github, listed, removed, own)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "index.json").write_text(
         json.dumps(index, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
@@ -454,11 +468,17 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     b = sub.add_parser("build", help="write index.json")
     b.add_argument("--out", type=Path, default=Path("site"))
+    b.add_argument(
+        "--self",
+        dest="own",
+        default=os.environ.get("GITHUB_REPOSITORY"),
+        help="this registry's repo, whose add-ons are listed (default: $GITHUB_REPOSITORY)",
+    )
     a = sub.add_parser("added", help="the repos and add-ons a pull request adds")
     a.add_argument("--base", required=True, help="the commit to compare with")
     args = parser.parse_args()
     if args.command == "build":
-        build(args.out)
+        build(args.out, args.own)
     else:
         added(args.base)
 
