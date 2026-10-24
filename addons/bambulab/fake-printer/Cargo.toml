@@ -1,0 +1,13 @@
+[package]
+name = "fake-printer"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "A stand-in Bambu Lab X1C on the LAN, for trying the plugin with niles plugin dev."
+publish = false
+
+[dependencies]
+rumqttd = { version = "0.20", default-features = false, features = ["use-rustls"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rcgen = "0.14"
+serde_json = "1"

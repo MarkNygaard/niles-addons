@@ -2,10 +2,13 @@
 # wasm32-wasip2 and released on its own, like any third-party add-on. An
 # add-on depends only on the WIT copied into wit/, never on Niles's own
 # crates.
+#
+# bambulab/fake-printer is a native program for trying bambulab without a
+# printer, not an add-on, so it stays out: its own lock file and target/.
 [workspace]
 resolver = "3"
 members = ["*"]
-exclude = ["target", "wit"]
+exclude = ["target", "wit", "bambulab/fake-printer"]
 
 # The bindings wit-bindgen generates take as many arguments as the WIT's
 # functions and records have fields. Clippy's own threshold for a

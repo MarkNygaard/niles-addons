@@ -10,3 +10,11 @@ added.txt
 /addons/*/integration.wasm
 /addons/*/.niles-dev
 /addons/*/dev-settings.toml
+
+# bambulab's fake printer builds on its own, outside the workspace, and
+# keeps its certificate and key in .fake-printer where it is started.
+/addons/bambulab/fake-printer/target
+.fake-printer/
+
+# A Niles built for `niles plugin check`, outside a Niles checkout.
+/.niles-target

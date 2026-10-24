@@ -1,0 +1,72 @@
+id = "bambulab"
+name = "Bambu Lab"
+version = "0.1.1" # x-release-please-version
+description = "Follow your Bambu Lab 3D printer's prints by voice and in rules, pause or stop them, and hear when they finish."
+authors = ["Mark Nygaard Leth"]
+homepage = "https://github.com/MarkNygaard/niles-addons/tree/main/addons/bambulab"
+min_niles = "0.2.1"
+interface = "0.2"
+# No built-in group is about workshop machines, so it shows under Custom.
+logo = "logo.svg"
+keywords = [
+    "printer", "printers", "3d printer", "3d", "print", "prints", "printing",
+    "print job", "bambu", "bambu lab", "x1c", "x1 carbon", "nozzle", "hotend",
+    "bed", "build plate", "chamber", "chamber light", "filament", "layer", "layers",
+    "benchy", "printeren", "3d-printer", "udskrift", "udskriften",
+]
+
+[permissions]
+devices = true
+tools = true
+ui = true
+notify = true
+mqtt = [
+    { name = "printer", host = "setting:address", port = 8883, tls = "trust-device" },
+]
+
+[[settings]]
+key = "address"
+label = "Printer address"
+type = "string"
+required = true
+help = "The printer's IP address, under Settings → Network (WLAN) on its screen, such as 192.168.1.40. Give it a fixed address in your router."
+
+[[settings]]
+key = "serial"
+label = "Serial number"
+type = "string"
+required = true
+help = "On the printer's screen under Settings → Device, or in Bambu Studio's Device tab. It starts with 00M on an X1C."
+
+[[settings]]
+key = "access_code"
+label = "LAN access code"
+type = "secret"
+required = true
+help = "The eight characters under Settings → Network (WLAN) on the printer's screen. In cloud mode Niles can follow prints but not pause or stop them; for that, turn on LAN Only and Developer mode there."
+
+[[settings]]
+key = "room"
+label = "Room"
+type = "room"
+required = true
+help = "Where the printer stands. Its devices join this room: the printer and its chamber light."
+
+[[settings]]
+key = "announce_room"
+label = "Say when a print is done in"
+type = "room"
+help = "Niles says when a print finishes or fails in this room. Leave it empty for no announcements."
+
+[[ui.menu]]
+id = "printer"
+label = "3D printer"
+icon = "printer"
+# The page shows "last report 12 s ago" and the time left.
+refresh_every = 60
+
+[[ui.widgets]]
+id = "printer_now"
+title = "3D printer"
+room = "setting:room"
+refresh_every = 60

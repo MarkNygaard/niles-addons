@@ -58,7 +58,16 @@ CI runs all of this. `addons.yml` checks each add-on with the published Niles im
 
 1. Branch off `main` as `feat/`, `fix/`, `docs/` or `chore/`, named after the issue (`feat/nil-53-weather`).
 2. Open a PR into `main`, with `Fixes NIL-N` in the body. Its title is a Conventional Commit with the add-on as scope, `feat(weather): …` or `fix(spotprice): …`, because release-please reads the titles. Registry changes have no add-on scope.
-3. Wait for CI, then squash-merge.
+3. Wait for CI, then squash-merge. `main` is the only branch: an add-on is released by its own release PR, and the registry goes live when it merges.
+
+### Who merges what
+
+`main` is protected by a ruleset: no direct pushes, force-pushes or deletion; a pull request with the `addons (build + check)` check passing; and a review from a code owner (`.github/CODEOWNERS`), with no other approvals required.
+
+- **Files Mark owns need his approval:** the registry (`addons.toml`, `scripts/`), the workflows, `CODEOWNERS`, the frozen WIT copies and his add-ons. That's everything not listed as unowned.
+- **Unowned files need no approval:** each add-on folder `CODEOWNERS` lists without an owner (someone else's add-on), `.release-please-manifest.json` and `addons/Cargo.lock`. A PR that touches only those, such as a change to your own add-on or its release PR, is merged by its author once CI passes.
+- **GitHub never counts an author's approval of their own PR,** so anything touching Mark's files waits for him.
+- **Starting a new add-on that isn't Mark's** is one PR he approves: the folder, its package in `release-please-config.json`, and its unowned line in `CODEOWNERS`. After that, its author merges their own PRs.
 
 release-please (`release-please-config.json`, `.github/workflows/release-please.yml`) keeps one release PR per add-on with changes, titled `chore(<name>): release X.Y.Z`. Merging it tags `<name>-vX.Y.Z`, and the workflow attaches `niles-integration.toml`, `integration.wasm`, the logo and `niles-installed`, so the release installs and is counted. A new add-on gets a package in `release-please-config.json` (copy spotprice's) with `initial-version`.
 
