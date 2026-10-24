@@ -1,1 +1,4 @@
-{"addons/spotprice":"0.1.0"}
+{
+  "addons/bambulab": "0.2.0",
+  "addons/spotprice": "0.1.0"
+}

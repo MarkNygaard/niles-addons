@@ -27,6 +27,17 @@
         { "type": "generic", "path": "Cargo.toml" },
         { "type": "generic", "path": "niles-integration.toml" }
       ]
+    },
+    "addons/bambulab": {
+      "release-type": "simple",
+      "component": "bambulab",
+      "package-name": "bambulab",
+      "pull-request-title-pattern": "chore(bambulab): release ${version}",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "generic", "path": "Cargo.toml" },
+        { "type": "generic", "path": "niles-integration.toml" }
+      ]
     }
   }
 }
