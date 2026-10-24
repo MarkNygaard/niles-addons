@@ -61,7 +61,12 @@ A removed add-on is hidden from Browse. Where it's installed it keeps working, a
 
 ## First-party add-ons
 
-Niles's own add-ons live here, in [`addons/`](addons), one folder each, starting with [`spotprice`](addons/spotprice). They are built like anybody's: against the published interface, copied into [`addons/wit/`](addons/wit), never against Niles's own crates. A change to the interface lands in Niles first, and an add-on that uses it follows with a `min_niles` that has it.
+Niles's own add-ons live here, in [`addons/`](addons), one folder each:
+
+- [`spotprice`](addons/spotprice): Danish electricity spot prices.
+- [`bambulab`](addons/bambulab): a Bambu Lab 3D printer on the home network. It moved here from [MarkNygaard/niles-bambulab](https://github.com/MarkNygaard/niles-bambulab), with its history, and carries on from its 0.1.1. [`fake-printer`](addons/bambulab/fake-printer) beside it is a stand-in printer for trying it, a native program outside the add-ons' workspace.
+
+They are built like anybody's: against the published interface, copied into [`addons/wit/`](addons/wit), never against Niles's own crates. A change to the interface lands in Niles first, and an add-on that uses it follows with a `min_niles` that has it.
 
 Build and check one locally, with the `wasm32-wasip2` target installed (`rustup target add wasm32-wasip2`):
 
