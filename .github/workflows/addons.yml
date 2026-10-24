@@ -1,0 +1,61 @@
+name: add-ons
+
+# The first-party add-ons in addons/: formatted, linted, built to
+# WebAssembly, and each checked by `niles plugin check` as an install
+# would check it. The check runs the published Niles image, the Niles
+# households run, rather than a build of Niles's development branch.
+on:
+  pull_request:
+    paths: ["addons/**", ".github/workflows/addons.yml"]
+  push:
+    branches: [main]
+    paths: ["addons/**", ".github/workflows/addons.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: addons-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  addons:
+    name: addons (build + check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: addons -> target
+
+      - name: cargo fmt --check
+        working-directory: addons
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        working-directory: addons
+        run: cargo clippy --target wasm32-wasip2 --all-targets -- -D warnings
+
+      - name: Build
+        run: addons/build.sh
+
+      - name: niles plugin check
+        run: |
+          docker pull --quiet ghcr.io/marknygaard/niles:latest
+          for manifest in addons/*/niles-integration.toml; do
+            dir="${manifest%/niles-integration.toml}"
+            echo "::group::$dir"
+            docker run --rm -v "$PWD/$dir:/addon:ro" ghcr.io/marknygaard/niles:latest plugin check /addon
+            echo "::endgroup::"
+          done

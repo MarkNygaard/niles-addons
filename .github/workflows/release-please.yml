@@ -1,0 +1,156 @@
+name: release-please
+
+# Each add-on in addons/ is released on its own. release-please keeps a
+# release PR open per add-on with changes since its last release: the
+# next version, worked out from the Conventional-Commits titles of the
+# changes under its folder, and its CHANGELOG.md. Merging it tags the
+# release (spotprice-v0.1.0) and publishes it on GitHub, and the assets
+# job attaches what an install fetches.
+#
+# Repo setting needed: Settings → Actions → General → "Allow GitHub
+# Actions to create and approve pull requests". A PR opened with the
+# workflow's own GITHUB_TOKEN starts no workflows, so the add-ons check
+# doesn't run on a release PR unless RELEASE_PLEASE_TOKEN holds a
+# fine-grained token (this repository: contents and pull requests, read
+# and write).
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      prs_created: ${{ steps.release.outputs.prs_created }}
+      prs: ${{ steps.release.outputs.prs }}
+      tags: ${{ steps.tags.outputs.tags }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # The tags of the releases just made, as a JSON list. The action
+      # names each package's outputs after its path, like
+      # addons/spotprice--tag_name.
+      - name: Releases made
+        id: tags
+        env:
+          OUTPUTS: ${{ toJSON(steps.release.outputs) }}
+        run: |
+          tags=$(jq -c '[to_entries[] | select(.key | test("^addons/[^/]+--tag_name$")) | .value]' <<< "$OUTPUTS")
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+
+  # Builds each add-on just released and attaches niles-integration.toml,
+  # integration.wasm, the logo the manifest names, and niles-installed,
+  # whose download count is the add-on's number of installs. Re-running
+  # a failed leg replaces what it had attached.
+  assets:
+    needs: release-please
+    if: needs.release-please.outputs.tags != '[]'
+    strategy:
+      matrix:
+        tag: ${{ fromJSON(needs.release-please.outputs.tags) }}
+    name: assets (${{ matrix.tag }})
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ matrix.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ matrix.tag }}
+
+      - name: The add-on, its version and its logo
+        id: addon
+        run: |
+          name="${TAG%-v*}"
+          version="${TAG##*-v}"
+          manifest="addons/$name/niles-integration.toml"
+          if [ ! -f "$manifest" ]; then
+            echo "$TAG names no add-on: there is no $manifest" >&2
+            exit 1
+          fi
+          read -r said logo < <(python3 -c '
+          import sys, tomllib
+          m = tomllib.load(open(sys.argv[1], "rb"))
+          print(m["version"], m.get("logo", ""))
+          ' "$manifest")
+          if [ "$said" != "$version" ]; then
+            echo "Tag $TAG but $manifest says $said" >&2
+            exit 1
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "logo=$logo" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: addons -> target
+
+      - name: Build
+        env:
+          NAME: ${{ steps.addon.outputs.name }}
+        run: addons/build.sh "$NAME"
+
+      # An asset is named after its file, so a logo at assets/logo.svg is
+      # the asset logo.svg, which is where an install looks for it.
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.addon.outputs.name }}
+          LOGO: ${{ steps.addon.outputs.logo }}
+        run: |
+          dir="addons/$NAME"
+          printf '1' > "$RUNNER_TEMP/niles-installed"
+          files=("$dir/niles-integration.toml" "$dir/integration.wasm" "$RUNNER_TEMP/niles-installed")
+          if [ -n "$LOGO" ]; then
+            files+=("$dir/$LOGO")
+          fi
+          gh release upload "$TAG" "${files[@]}" --clobber
+
+  # release-please moves the version in an add-on's Cargo.toml; the lock
+  # file names the crate at that version too, and is left to cargo to put
+  # right, on each release PR's own branch.
+  lockfile:
+    needs: release-please
+    if: needs.release-please.outputs.prs_created == 'true'
+    strategy:
+      matrix:
+        pr: ${{ fromJSON(needs.release-please.outputs.prs) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ matrix.pr.headBranchName }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Bring addons/Cargo.lock to the new version
+        working-directory: addons
+        run: |
+          cargo update --workspace
+          if git diff --quiet -- Cargo.lock; then
+            echo "Cargo.lock already agrees."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          git commit -m "chore: Cargo.lock for the release"
+          git push

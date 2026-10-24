@@ -2,7 +2,7 @@
 
 The add-on library for [Niles](https://github.com/MarkNygaard/niles): what Niles shows under **Add-ons → Browse**. It's one file, [`index.json`](https://addons.getniles.app/index.json), rebuilt from GitHub's public data every six hours and whenever this repo changes. Niles reads it, keeps it for six hours, and makes no GitHub API calls of its own to browse.
 
-Writing an add-on is described in Niles's [plugin author guide](https://github.com/MarkNygaard/niles/tree/main/docs/integrations).
+Writing an add-on is described in Niles's [add-on author guide](https://getniles.app/docs/writing-add-ons).
 
 ## Being found
 
@@ -58,3 +58,25 @@ A removed add-on is hidden from Browse. Where it's installed it keeps working, a
 - [`scripts/registry.py`](scripts/registry.py) writes `index.json`, using only the Python standard library. The format is Niles's, documented in `niles_plugins::library`. The file is version 2 once an entry has `addon`, and version 1 until then, so a Niles from before version 2 keeps browsing. [`scripts/test_registry.py`](scripts/test_registry.py) tests it against made-up GitHub data: `python -I -m unittest discover -s scripts`.
 - [`.github/workflows/build.yml`](.github/workflows/build.yml) runs it on a schedule and on every merge, and deploys to GitHub Pages at `addons.getniles.app`.
 - [`.github/workflows/check.yml`](.github/workflows/check.yml) checks a listing pull request with Niles's own image.
+
+## First-party add-ons
+
+Niles's own add-ons live here, in [`addons/`](addons), one folder each, starting with [`spotprice`](addons/spotprice). They are built like anybody's: against the published interface, copied into [`addons/wit/`](addons/wit), never against Niles's own crates. A change to the interface lands in Niles first, and an add-on that uses it follows with a `min_niles` that has it.
+
+Build and check one locally, with the `wasm32-wasip2` target installed (`rustup target add wasm32-wasip2`):
+
+```sh
+cd addons
+cargo fmt --all --check
+cargo clippy --target wasm32-wasip2 --all-targets -- -D warnings
+./build.sh spotprice                  # or ./build.ps1; no name builds them all
+niles plugin check spotprice
+```
+
+`build.sh` copies each component to `addons/<name>/integration.wasm`, where `niles plugin check` looks. [`.github/workflows/addons.yml`](.github/workflows/addons.yml) does the same on every pull request that touches `addons/`, checking with the published Niles image.
+
+Each add-on is released on its own. Pull request titles name it as the scope, `feat(spotprice): ...` or `fix(spotprice): ...`, and release-please keeps a release pull request per add-on (`chore(spotprice): release 0.2.0`). Merging that tags `spotprice-v0.2.0`, and [`.github/workflows/release-please.yml`](.github/workflows/release-please.yml) attaches `niles-integration.toml`, `integration.wasm`, the logo and `niles-installed` to the release. Households install it as `MarkNygaard/niles-addons/spotprice`.
+
+A new add-on also needs a package in [`release-please-config.json`](release-please-config.json), copied from `addons/spotprice`'s with the name changed, and `# x-release-please-version` after the `version` line in its `Cargo.toml` and `niles-integration.toml`.
+
+The add-ons here aren't in `addons.toml` yet: listing an add-on that shares its repo with others needs version 2 of the index.
