@@ -4,12 +4,12 @@ name: add-ons
 # WebAssembly, and each checked by `niles plugin check` as an install
 # would check it. The check runs the published Niles image, the Niles
 # households run, rather than a build of Niles's development branch.
+# On every pull request, not only ones under addons/: it is a required
+# check on main, and a required check that never runs blocks the merge.
 on:
   pull_request:
-    paths: ["addons/**", ".github/workflows/addons.yml"]
   push:
     branches: [main]
-    paths: ["addons/**", ".github/workflows/addons.yml"]
 
 permissions:
   contents: read
