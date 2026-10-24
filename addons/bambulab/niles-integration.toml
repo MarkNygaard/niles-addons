@@ -6,7 +6,7 @@ authors = ["Mark Nygaard Leth"]
 homepage = "https://github.com/MarkNygaard/niles-addons/tree/main/addons/bambulab"
 min_niles = "0.2.1"
 interface = "0.2"
-# No built-in group is about workshop machines, so it shows under Custom.
+group = "devices"
 logo = "logo.svg"
 keywords = [
     "printer", "printers", "3d printer", "3d", "print", "prints", "printing",
