@@ -9,9 +9,14 @@ public repo with the topic `niles-addon` as unreviewed, and every
 [[removed]] entry. It reads GitHub's public data only, with the workflow's
 own token for the API's higher limit.
 
-`added` checks addons.toml's shape and prints, one per line, the repos a
-pull request adds to [[addon]], for the listing check to run
-`niles plugin check --listing` on.
+A repo can hold several add-ons. Each one's releases are tagged with its
+id, a `-v` and the version (`spotprice-v0.2.0`), and each is its own entry,
+with `addon` set to that id. Such a file is index version 2; a file without
+one is version 1, which every Niles with the library reads.
+
+`added` checks addons.toml's shape and prints, one per line, what a pull
+request adds to [[addon]] (`owner/repo`, or `owner/repo/<addon>`), for the
+listing check to run `niles plugin check --listing` on.
 
 Standard library only, so the workflows need nothing installed.
 """
@@ -43,6 +48,11 @@ MAX_README = 1000
 MAX_REASON = 300
 
 REPO = re.compile(r"^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$")
+# An add-on's id, as Niles's manifest check has it.
+ADDON = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
+# A release version: major.minor.patch, without a pre-release part.
+VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:\+[0-9A-Za-z.-]+)?$")
+PRE_VERSION = re.compile(r"^\d+\.\d+\.\d+-[0-9A-Za-z.-]+(?:\+[0-9A-Za-z.-]+)?$")
 
 
 def fail(message: str) -> None:
@@ -50,11 +60,24 @@ def fail(message: str) -> None:
     sys.exit(1)
 
 
+# A listed or removed entry: the repo as written, and the add-on in it for a
+# repo of several (None for a repo of one).
+Key = tuple[str, "str | None"]
+
+
+def key_of(repo: str, addon: str | None) -> tuple[str, str | None]:
+    return repo.lower(), addon
+
+
+def address(repo: str, addon: str | None) -> str:
+    return f"{repo}/{addon}" if addon else repo
+
+
 # ---------------------------------------------------------------- addons.toml
 
 
-def read_list(text: str) -> tuple[list[str], dict[str, str]]:
-    """The listed repos and the removed ones with their reasons, checked."""
+def read_list(text: str) -> tuple[list[Key], dict[Key, str]]:
+    """The listed entries and the removed ones with their reasons, checked."""
     try:
         doc = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
@@ -63,31 +86,95 @@ def read_list(text: str) -> tuple[list[str], dict[str, str]]:
     if unknown:
         fail(f"addons.toml has tables it doesn't use: {', '.join(sorted(unknown))}")
 
-    seen: dict[str, str] = {}
+    seen: dict[tuple[str, str | None], str] = {}
 
-    def repo_of(entry: object, table: str) -> str:
+    def entry_of(entry: object, table: str) -> Key:
         if not isinstance(entry, dict) or not isinstance(entry.get("repo"), str):
             fail(f"every [[{table}]] needs repo = \"owner/name\"")
         repo = entry["repo"].strip()
         if not REPO.match(repo):
             fail(f"[[{table}]] repo {repo!r} is not owner/name")
-        key = repo.lower()
+        addon = entry.get("addon")
+        if addon is not None and (not isinstance(addon, str) or not ADDON.match(addon)):
+            fail(
+                f"[[{table}]] {repo}: addon {addon!r} is not an add-on's id "
+                "(2 to 32 lowercase letters, digits and _, starting with a letter)"
+            )
+        key = key_of(repo, addon)
         if key in seen:
-            fail(f"{repo} is in addons.toml twice ([[{seen[key]}]] and [[{table}]])")
+            fail(f"{address(repo, addon)} is in addons.toml twice ([[{seen[key]}]] and [[{table}]])")
         seen[key] = table
-        return repo
+        return repo, addon
 
-    listed = [repo_of(e, "addon") for e in doc.get("addon", [])]
-    removed: dict[str, str] = {}
+    listed = [entry_of(e, "addon") for e in doc.get("addon", [])]
+    removed: dict[Key, str] = {}
     for entry in doc.get("removed", []):
-        repo = repo_of(entry, "removed")
+        repo, addon = entry_of(entry, "removed")
+        where = address(repo, addon)
         reason = entry.get("reason")
         if not isinstance(reason, str) or not reason.strip():
-            fail(f"[[removed]] {repo} needs a reason: one sentence the household is shown")
+            fail(f"[[removed]] {where} needs a reason: one sentence the household is shown")
         if len(reason) > MAX_REASON:
-            fail(f"[[removed]] {repo}'s reason is over {MAX_REASON} characters")
-        removed[repo] = reason.strip()
+            fail(f"[[removed]] {where}'s reason is over {MAX_REASON} characters")
+        removed[(repo, addon)] = reason.strip()
+
+    # A repo is listed whole or by its add-ons, not both; and a repo
+    # removed whole has none of its add-ons listed.
+    whole = {repo.lower() for repo, addon in listed if addon is None}
+    gone = {repo.lower() for repo, addon in removed if addon is None}
+    for repo, addon in listed:
+        if addon is not None and repo.lower() in whole:
+            fail(f"{repo} is listed whole and as {address(repo, addon)}; list one or the other")
+        if addon is not None and repo.lower() in gone:
+            fail(f"{repo} is in [[removed]] whole, so {address(repo, addon)} can't be listed")
     return listed, removed
+
+
+# ------------------------------------------------------------------- releases
+
+
+def addon_of_tag(tag: str) -> str | None:
+    """The add-on a tag like `spotprice-v1.2.0` belongs to; None for `v1.2.0`."""
+    name, dash, rest = tag.partition("-")
+    if not dash or not rest.startswith("v") or not ADDON.match(name):
+        return None
+    version = rest[1:]
+    return name if VERSION.match(version) or PRE_VERSION.match(version) else None
+
+
+def releases_of(releases: list[dict], addon: str | None) -> list[dict]:
+    """`addon`'s releases, or for a repo of one add-on, those not tagged for one."""
+    return [r for r in releases if addon_of_tag(r.get("tag_name") or "") == addon]
+
+
+def addons_in(releases: list[dict]) -> list[str]:
+    """The add-ons a repo's releases are tagged for, sorted."""
+    return sorted({a for r in releases if (a := addon_of_tag(r.get("tag_name") or ""))})
+
+
+def latest(releases: list[dict], addon: str | None) -> dict | None:
+    """The release Niles installs: GitHub's latest for a repo of one add-on
+    (the newest that isn't a pre-release, as the API lists them), and for
+    one of several, its highest version that isn't a pre-release."""
+    published = [r for r in releases if not r.get("prerelease")]
+    if addon is None:
+        return published[0] if published else None
+    versioned = []
+    for r in published:
+        match = VERSION.match(r["tag_name"][len(addon) + 2 :])
+        if match:
+            versioned.append((tuple(int(n) for n in match.groups()), r))
+    return max(versioned, key=lambda pair: pair[0])[1] if versioned else None
+
+
+def counted(releases: list[dict], name: str) -> int | None:
+    counts = [
+        a.get("download_count", 0)
+        for r in releases
+        for a in r.get("assets", [])
+        if a.get("name") == name
+    ]
+    return sum(counts) if counts else None
 
 
 # --------------------------------------------------------------------- GitHub
@@ -191,103 +278,154 @@ def plain_readme(markdown: str) -> str:
 # ---------------------------------------------------------------------- build
 
 
-def entry(github: GitHub, repo: str, standing: str) -> dict | None:
+class Repo:
+    """One repo as GitHub describes it, fetched once for all its add-ons."""
+
+    def __init__(self, github: GitHub, info: dict) -> None:
+        self.info = info
+        self.name = info["full_name"]
+        self.releases = github.releases(self.name)
+        readme = github.raw(f"/repos/{self.name}/readme")
+        self.readme = (plain_readme(readme) or None) if readme else None
+
+
+def fetch_repo(github: GitHub, repo: str) -> Repo | None:
     info = github.json(f"/repos/{repo}")
     if not isinstance(info, dict) or info.get("private"):
         print(f"  skipped {repo}: not a public repo", file=sys.stderr)
         return None
-    releases = github.releases(info["full_name"])
+    return Repo(github, info)
 
-    def counted(name: str) -> int | None:
-        counts = [
-            a.get("download_count", 0)
-            for r in releases
-            for a in r.get("assets", [])
-            if a.get("name") == name
-        ]
-        return sum(counts) if counts else None
 
-    out: dict = {
-        "repo": info["full_name"],
-        "standing": standing,
-        "description": info.get("description"),
-        "stars": info.get("stargazers_count", 0),
-        "installs": counted(MARKER),
-        "downloads": counted(COMPONENT) or 0,
-        "release": None,
-        "readme": None,
+def release_text(github: GitHub, release: dict) -> dict:
+    """The release as the index carries it: its manifest and logo as text."""
+    assets = {a["name"]: a for a in release.get("assets", [])}
+    manifest_text = None
+    logo_text = None
+    if MANIFEST in assets:
+        raw = github.download(assets[MANIFEST]["browser_download_url"], MAX_MANIFEST)
+        if raw is not None:
+            manifest_text = raw.decode("utf-8", errors="replace")
+    if manifest_text is not None:
+        try:
+            logo = tomllib.loads(manifest_text).get("logo")
+        except tomllib.TOMLDecodeError:
+            logo = None
+        if isinstance(logo, str):
+            name = logo.rsplit("/", 1)[-1]
+            if name in assets:
+                raw = github.download(assets[name]["browser_download_url"], MAX_LOGO)
+                if raw is not None:
+                    logo_text = raw.decode("utf-8", errors="replace")
+    return {
+        "tag": release.get("tag_name"),
+        "published_at": release.get("published_at"),
+        "manifest": manifest_text,
+        "logo": logo_text,
     }
 
-    latest = next((r for r in releases if not r.get("prerelease")), None)
-    if latest is not None:
-        assets = {a["name"]: a for a in latest.get("assets", [])}
-        manifest_text = None
-        logo_text = None
-        if MANIFEST in assets:
-            raw = github.download(assets[MANIFEST]["browser_download_url"], MAX_MANIFEST)
-            if raw is not None:
-                manifest_text = raw.decode("utf-8", errors="replace")
-        if manifest_text is not None:
-            try:
-                logo = tomllib.loads(manifest_text).get("logo")
-            except tomllib.TOMLDecodeError:
-                logo = None
-            if isinstance(logo, str):
-                name = logo.rsplit("/", 1)[-1]
-                if name in assets:
-                    raw = github.download(assets[name]["browser_download_url"], MAX_LOGO)
-                    if raw is not None:
-                        logo_text = raw.decode("utf-8", errors="replace")
-        out["release"] = {
-            "tag": latest.get("tag_name"),
-            "published_at": latest.get("published_at"),
-            "manifest": manifest_text,
-            "logo": logo_text,
-        }
 
-    readme = github.raw(f"/repos/{info['full_name']}/readme")
-    if readme:
-        out["readme"] = plain_readme(readme) or None
+def entry(github: GitHub, repo: Repo, addon: str | None, standing: str) -> dict:
+    """One add-on's entry: a repo of one, or `addon` of several in the repo.
+    Its counts and release are its own; its stars are the repo's."""
+    releases = releases_of(repo.releases, addon)
+    out: dict = {"repo": repo.name}
+    if addon is not None:
+        out["addon"] = addon
+    out |= {
+        "standing": standing,
+        "description": repo.info.get("description"),
+        "stars": repo.info.get("stargazers_count", 0),
+        "installs": counted(releases, MARKER),
+        "downloads": counted(releases, COMPONENT) or 0,
+        "release": None,
+        "readme": repo.readme,
+    }
+    newest = latest(releases, addon)
+    if newest is not None:
+        out["release"] = release_text(github, newest)
     return out
+
+
+def wanted_entries(
+    listed: list[Key],
+    removed: dict[Key, str],
+    topic: list[str],
+    releases_for,
+) -> list[tuple[str, str | None, str]]:
+    """What goes in the index besides the removals, as (repo, addon,
+    standing): every listed entry, and every topic repo's add-ons that
+    aren't listed or removed. A topic repo whose releases are tagged for
+    add-ons is those add-ons; otherwise it is one. `releases_for(repo)`
+    gives a topic repo's releases."""
+    out: list[tuple[str, str | None, str]] = [(r, a, "listed") for r, a in listed]
+    named = {key_of(r, a) for r, a in [*listed, *removed]}
+    whole = {r.lower() for r, a in [*listed, *removed] if a is None}
+    for repo in topic:
+        if repo.lower() in whole:
+            continue
+        addons = addons_in(releases_for(repo))
+        for addon in addons or [None]:
+            if key_of(repo, addon) not in named:
+                named.add(key_of(repo, addon))
+                out.append((repo, addon, "unreviewed"))
+    return sorted(out, key=lambda e: (e[0].lower(), e[1] or ""))
+
+
+def index_of(github: GitHub, listed: list[Key], removed: dict[Key, str]) -> dict:
+    repos: dict[str, Repo | None] = {}
+
+    def repo_of(name: str) -> Repo | None:
+        if name.lower() not in repos:
+            try:
+                repos[name.lower()] = fetch_repo(github, name)
+            except (urllib.error.URLError, TimeoutError, ValueError) as e:
+                print(f"  skipped {name}: {e}", file=sys.stderr)
+                repos[name.lower()] = None
+        return repos[name.lower()]
+
+    def releases_for(name: str) -> list[dict]:
+        repo = repo_of(name)
+        return repo.releases if repo else []
+
+    addons = []
+    for name, addon, standing in wanted_entries(
+        listed, removed, github.topic_repos(), releases_for
+    ):
+        print(f"{standing:10} {address(name, addon)}", file=sys.stderr)
+        repo = repo_of(name)
+        if repo is None:
+            continue
+        try:
+            addons.append(entry(github, repo, addon, standing))
+        except (urllib.error.URLError, TimeoutError, ValueError) as e:
+            print(f"  skipped {address(name, addon)}: {e}", file=sys.stderr)
+    for (name, addon), reason in sorted(
+        removed.items(), key=lambda kv: (kv[0][0].lower(), kv[0][1] or "")
+    ):
+        gone: dict = {"repo": name}
+        if addon is not None:
+            gone["addon"] = addon
+        addons.append(gone | {"standing": "removed", "removed_reason": reason})
+
+    return {
+        # Version 1 while no entry needs `addon`, so a Niles that reads
+        # only 1 keeps browsing until a repo of several add-ons is in.
+        "version": 2 if any("addon" in a for a in addons) else 1,
+        "generated_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "addons": addons,
+    }
 
 
 def build(out_dir: Path) -> None:
     listed, removed = read_list(Path("addons.toml").read_text(encoding="utf-8"))
     github = GitHub(os.environ.get("GITHUB_TOKEN"))
-    removed_keys = {r.lower() for r in removed}
-    listed_keys = {r.lower() for r in listed}
-
-    wanted: dict[str, tuple[str, str]] = {}
-    for repo in listed:
-        wanted[repo.lower()] = (repo, "listed")
-    for repo in github.topic_repos():
-        key = repo.lower()
-        if key not in listed_keys and key not in removed_keys:
-            wanted.setdefault(key, (repo, "unreviewed"))
-
-    addons = []
-    for _, (repo, standing) in sorted(wanted.items()):
-        print(f"{standing:10} {repo}", file=sys.stderr)
-        try:
-            made = entry(github, repo, standing)
-        except (urllib.error.URLError, TimeoutError, ValueError) as e:
-            print(f"  skipped {repo}: {e}", file=sys.stderr)
-            continue
-        if made is not None:
-            addons.append(made)
-    for repo, reason in sorted(removed.items(), key=lambda kv: kv[0].lower()):
-        addons.append({"repo": repo, "standing": "removed", "removed_reason": reason})
-
-    index = {
-        "version": 1,
-        "generated_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "addons": addons,
-    }
+    index = index_of(github, listed, removed)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "index.json").write_text(
         json.dumps(index, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
     )
-    print(f"{len(addons)} entries, {github.calls} requests", file=sys.stderr)
+    print(f"{len(index['addons'])} entries, {github.calls} requests", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------- added
@@ -305,10 +443,10 @@ def added(base: str) -> None:
         before, _ = read_list(before_text)
     except subprocess.CalledProcessError:
         before = []
-    had = {r.lower() for r in before}
-    for repo in listed:
-        if repo.lower() not in had:
-            print(repo)
+    had = {key_of(r, a) for r, a in before}
+    for repo, addon in listed:
+        if key_of(repo, addon) not in had:
+            print(address(repo, addon))
 
 
 def main() -> None:
@@ -316,7 +454,7 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     b = sub.add_parser("build", help="write index.json")
     b.add_argument("--out", type=Path, default=Path("site"))
-    a = sub.add_parser("added", help="the repos a pull request adds")
+    a = sub.add_parser("added", help="the repos and add-ons a pull request adds")
     a.add_argument("--base", required=True, help="the commit to compare with")
     args = parser.parse_args()
     if args.command == "build":

@@ -7,6 +7,13 @@
 #   [[addon]]
 #   repo = "you/your-repo"
 #
+# One add-on of a repo that holds several, its releases tagged
+# <id>-vX.Y.Z, is named by its id too:
+#
+#   [[addon]]
+#   repo = "you/your-addons"
+#   addon = "spotprice"
+#
 # Taken off the list: the add-on is hidden from Browse, and a copy already
 # installed says on its panel that it is no longer listed, and why. One
 # sentence, shown to the household as it is.
@@ -14,3 +21,5 @@
 #   [[removed]]
 #   repo = "someone/their-repo"
 #   reason = "Its author archived it."
+#
+# With addon = "<id>", only that add-on of the repo is removed.
