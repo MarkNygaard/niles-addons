@@ -16,7 +16,7 @@ How add-ons work, for authors: [getniles.app/docs/writing-add-ons](https://getni
 - `addons/`: its own Cargo workspace (`addons/Cargo.toml`), built to `wasm32-wasip2` (`addons/rust-toolchain.toml`).
   - `addons/<name>/` holds one add-on: `Cargo.toml`, `niles-integration.toml`, its logo, `src/`, `README.md` and `CHANGELOG.md`.
   - `addons/wit/` holds frozen copies of the published Niles interface (WIT), copied unchanged from the Niles repo's `schemas/`.
-- `addons.toml`: the reviewed list, plus `[[removed]]` entries.
+- `addons.toml`: the reviewed list of other people's add-ons, plus `[[removed]]` entries. The add-ons in `addons/` need no entry: the builder lists every add-on released from this repo as Listed (`--self`, or `$GITHUB_REPOSITORY` in the workflow).
 - `scripts/registry.py`: the index builder, Python standard library only. Its tests are in `scripts/test_registry.py`.
 - `site-static/`: the front page next to `index.json`.
 
