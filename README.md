@@ -2,7 +2,7 @@
 
 The add-on library for [Niles](https://github.com/MarkNygaard/niles): what Niles shows under **Add-ons → Browse**. It's one file, [`index.json`](https://addons.getniles.app/index.json), rebuilt from GitHub's public data every six hours and whenever this repo changes. Niles reads it, keeps it for six hours, and makes no GitHub API calls of its own to browse.
 
-Writing an add-on is described in Niles's [plugin author guide](https://github.com/MarkNygaard/niles/tree/main/docs/integrations).
+Writing an add-on is described in Niles's [add-on author guide](https://getniles.app/docs/writing-add-ons).
 
 ## Being found
 
