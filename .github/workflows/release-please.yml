@@ -4,7 +4,7 @@ name: release-please
 # release PR open per add-on with changes since its last release: the
 # next version, worked out from the Conventional-Commits titles of the
 # changes under its folder, and its CHANGELOG.md. Merging it tags the
-# release (spotprice-v0.1.0) and publishes it on GitHub, and the assets
+# release (bambulab-v0.2.0) and publishes it on GitHub, and the assets
 # job attaches what an install fetches.
 #
 # Repo setting needed: Settings → Actions → General → "Allow GitHub
@@ -44,7 +44,7 @@ jobs:
 
       # The tags of the releases just made, as a JSON list. The action
       # names each package's outputs after its path, like
-      # addons/spotprice--tag_name.
+      # addons/bambulab--tag_name.
       - name: Releases made
         id: tags
         env:

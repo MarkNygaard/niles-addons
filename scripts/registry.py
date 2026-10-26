@@ -10,7 +10,7 @@ public repo with the topic `niles-addon` as unreviewed, and every
 own token for the API's higher limit.
 
 A repo can hold several add-ons. Each one's releases are tagged with its
-id, a `-v` and the version (`spotprice-v0.2.0`), and each is its own entry,
+id, a `-v` and the version (`pool-v0.2.0`), and each is its own entry,
 with `addon` set to that id. Such a file is index version 2; a file without
 one is version 1, which every Niles with the library reads.
 
@@ -134,7 +134,7 @@ def read_list(text: str) -> tuple[list[Key], dict[Key, str]]:
 
 
 def addon_of_tag(tag: str) -> str | None:
-    """The add-on a tag like `spotprice-v1.2.0` belongs to; None for `v1.2.0`."""
+    """The add-on a tag like `pool-v1.2.0` belongs to; None for `v1.2.0`."""
     name, dash, rest = tag.partition("-")
     if not dash or not rest.startswith("v") or not ADDON.match(name):
         return None

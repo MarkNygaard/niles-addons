@@ -12,7 +12,7 @@
 #
 #   [[addon]]
 #   repo = "you/your-addons"
-#   addon = "spotprice"
+#   addon = "pool"
 #
 # Taken off the list: the add-on is hidden from Browse, and a copy already
 # installed says on its panel that it is no longer listed, and why. One
