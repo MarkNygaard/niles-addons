@@ -1,6 +1,6 @@
 id = "bambulab"
 name = "Bambu Lab"
-version = "0.2.0" # x-release-please-version
+version = "0.2.1" # x-release-please-version
 description = "Follow your Bambu Lab 3D printer's prints by voice and in rules, pause or stop them, and hear when they finish."
 authors = ["Mark Nygaard Leth"]
 homepage = "https://github.com/MarkNygaard/niles-addons/tree/main/addons/bambulab"

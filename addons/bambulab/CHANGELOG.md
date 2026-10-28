@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/MarkNygaard/niles-addons/compare/bambulab-v0.2.0...bambulab-v0.2.1) (2026-10-28)
+
+
+### Fixes
+
+* **bambulab:** list it under Devices & appliances (NIL-58) ([#8](https://github.com/MarkNygaard/niles-addons/issues/8)) ([7508425](https://github.com/MarkNygaard/niles-addons/commit/7508425e6a71ca692bba3ae51f8487c262e214fe))
+
 ## [0.2.0](https://github.com/MarkNygaard/niles-addons/compare/bambulab-v0.1.1...bambulab-v0.2.0) (2026-10-24)
 
 
