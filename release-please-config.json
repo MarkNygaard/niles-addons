@@ -16,18 +16,6 @@
     { "type": "ci", "section": "CI", "hidden": true }
   ],
   "packages": {
-    "addons/spotprice": {
-      "release-type": "simple",
-      "component": "spotprice",
-      "package-name": "spotprice",
-      "initial-version": "0.1.0",
-      "pull-request-title-pattern": "chore(spotprice): release ${version}",
-      "changelog-path": "CHANGELOG.md",
-      "extra-files": [
-        { "type": "generic", "path": "Cargo.toml" },
-        { "type": "generic", "path": "niles-integration.toml" }
-      ]
-    },
     "addons/bambulab": {
       "release-type": "simple",
       "component": "bambulab",

@@ -10,7 +10,7 @@ Give your repo the topic `niles-addon` (About → Topics, or `gh repo edit --add
 
 ## Several add-ons in one repo
 
-A repo can hold several add-ons. Tag each one's releases with its id, a `-v` and the version: `spotprice-v0.2.0`, `pool-v1.0.0`. Niles installs one of them as `owner/repo/<id>`, from its newest release with that tag. The library lists each add-on its releases are tagged for as its own entry, with its own install count summed over its own releases. Stars belong to the repo, so its add-ons share them, and Browse says so. The [plugin author guide](https://getniles.app/docs/writing-add-ons/publishing) has the details.
+A repo can hold several add-ons. Tag each one's releases with its id, a `-v` and the version: `weather-v0.2.0`, `pool-v1.0.0`. Niles installs one of them as `owner/repo/<id>`, from its newest release with that tag. The library lists each add-on its releases are tagged for as its own entry, with its own install count summed over its own releases. Stars belong to the repo, so its add-ons share them, and Browse says so. The [plugin author guide](https://getniles.app/docs/writing-add-ons/publishing) has the details.
 
 ## Getting listed
 
@@ -26,12 +26,12 @@ For one add-on of a repo that holds several, add `addon` with its id:
 ```toml
 [[addon]]
 repo = "you/your-addons"
-addon = "spotprice"
+addon = "pool"
 ```
 
 A repo is listed whole or by its add-ons, not both.
 
-The check runs `niles plugin check --listing you/your-repo` (or `you/your-addons/spotprice`) on your latest release. That is everything an install checks, plus a `niles-installed` asset of at most 1 KiB. The run's summary lists what your add-on would be allowed to do, in the words the household's approval screen uses. Mark reads that and merges, and your add-on is **Listed**.
+The check runs `niles plugin check --listing you/your-repo` (or `you/your-addons/pool`) on your latest release. That is everything an install checks, plus a `niles-installed` asset of at most 1 KiB. The run's summary lists what your add-on would be allowed to do, in the words the household's approval screen uses. Mark reads that and merges, and your add-on is **Listed**.
 
 Listed means it passed the checks and someone read what it asks for. It isn't an audit of your code, later releases aren't reviewed again, and every household still approves its permissions when they install it.
 
@@ -63,7 +63,6 @@ A removed add-on is hidden from Browse. Where it's installed it keeps working, a
 
 Niles's own add-ons live here, in [`addons/`](addons), one folder each:
 
-- [`spotprice`](addons/spotprice): Danish electricity spot prices.
 - [`bambulab`](addons/bambulab): a Bambu Lab 3D printer on the home network. It moved here from [MarkNygaard/niles-bambulab](https://github.com/MarkNygaard/niles-bambulab), with its history, and carries on from its 0.1.1. [`fake-printer`](addons/bambulab/fake-printer) beside it is a stand-in printer for trying it, a native program outside the add-ons' workspace.
 
 They are built like anybody's: against the published interface, copied into [`addons/wit/`](addons/wit), never against Niles's own crates. A change to the interface lands in Niles first, and an add-on that uses it follows with a `min_niles` that has it.
@@ -74,14 +73,14 @@ Build and check one locally, with the `wasm32-wasip2` target installed (`rustup 
 cd addons
 cargo fmt --all --check
 cargo clippy --target wasm32-wasip2 --all-targets -- -D warnings
-./build.sh spotprice                  # or ./build.ps1; no name builds them all
-niles plugin check spotprice
+./build.sh bambulab                   # or ./build.ps1; no name builds them all
+niles plugin check bambulab
 ```
 
 `build.sh` copies each component to `addons/<name>/integration.wasm`, where `niles plugin check` looks. [`.github/workflows/addons.yml`](.github/workflows/addons.yml) does the same on every pull request that touches `addons/`, checking with the published Niles image.
 
-Each add-on is released on its own. Pull request titles name it as the scope, `feat(spotprice): ...` or `fix(spotprice): ...`, and release-please keeps a release pull request per add-on (`chore(spotprice): release 0.2.0`). Merging that tags `spotprice-v0.2.0`, and [`.github/workflows/release-please.yml`](.github/workflows/release-please.yml) attaches `niles-integration.toml`, `integration.wasm`, the logo and `niles-installed` to the release. Households install it as `MarkNygaard/niles-addons/spotprice`.
+Each add-on is released on its own. Pull request titles name it as the scope, `feat(bambulab): ...` or `fix(bambulab): ...`, and release-please keeps a release pull request per add-on (`chore(bambulab): release 0.3.0`). Merging that tags `bambulab-v0.3.0`, and [`.github/workflows/release-please.yml`](.github/workflows/release-please.yml) attaches `niles-integration.toml`, `integration.wasm`, the logo and `niles-installed` to the release. Households install it as `MarkNygaard/niles-addons/bambulab`.
 
-A new add-on also needs a package in [`release-please-config.json`](release-please-config.json), copied from `addons/spotprice`'s with the name changed, and `# x-release-please-version` after the `version` line in its `Cargo.toml` and `niles-integration.toml`.
+A new add-on also needs a package in [`release-please-config.json`](release-please-config.json), copied from `addons/bambulab`'s with the name changed, and `# x-release-please-version` after the `version` line in its `Cargo.toml` and `niles-integration.toml`.
 
 The add-ons here are **Listed** automatically: the index builder lists every add-on released from this repo, without an entry in `addons.toml`, since they're reviewed in this repo's own pull requests. A `[[removed]]` entry with `addon = "<name>"` still takes one off. Listing one makes the index version 2, which Niles reads from 0.6.0.

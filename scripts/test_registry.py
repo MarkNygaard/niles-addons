@@ -185,7 +185,7 @@ class Index(unittest.TestCase):
 
 class OwnAddons(unittest.TestCase):
     OWN = "MarkNygaard/niles-addons"
-    RELEASES = [release("weather-v0.1.0", installs=2), release("spotprice-v0.1.0", installs=4)]
+    RELEASES = [release("weather-v0.1.0", installs=2), release("garden-v0.1.0", installs=4)]
 
     def test_each_add_on_released_here_is_listed_without_an_entry(self) -> None:
         github = FakeGitHub({self.OWN: self.RELEASES})
@@ -194,11 +194,11 @@ class OwnAddons(unittest.TestCase):
         entries = by_address(index)
         self.assertEqual(
             set(entries),
-            {f"{self.OWN}/spotprice", f"{self.OWN}/weather"},
+            {f"{self.OWN}/garden", f"{self.OWN}/weather"},
         )
         for entry in entries.values():
             self.assertEqual(entry["standing"], "listed")
-        self.assertEqual(entries[f"{self.OWN}/spotprice"]["installs"], 4)
+        self.assertEqual(entries[f"{self.OWN}/garden"]["installs"], 4)
 
     def test_one_of_them_can_still_be_taken_off(self) -> None:
         github = FakeGitHub({self.OWN: self.RELEASES})
@@ -208,7 +208,7 @@ class OwnAddons(unittest.TestCase):
             own=self.OWN,
         )
         entries = by_address(index)
-        self.assertEqual(entries[f"{self.OWN}/spotprice"]["standing"], "listed")
+        self.assertEqual(entries[f"{self.OWN}/garden"]["standing"], "listed")
         self.assertEqual(entries[f"{self.OWN}/weather"]["standing"], "removed")
 
     def test_without_its_own_repo_nothing_changes(self) -> None:
